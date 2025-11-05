@@ -1,6 +1,55 @@
-# Welcome to your Expo app 👋
+# FRUX Factory Manangement application
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+
+## Application Architecture
+```mermaid
+flowchart LR
+  subgraph Shopfloor["Shopfloor (Lines A–F)"]
+    iPadA["iPad A (Line A)"]
+    iPadB["iPad B (Line B)"]
+    iPadC["iPad C (Line C)"]
+    iPadD["iPad D (Line D)"]
+    iPadE["iPad E (Line E)"]
+    iPadF["iPad F (Line F)"]
+  end
+
+  subgraph Cloud["Cloud / Backend"]
+    API["HTTP API (Node/Express)"]
+    DB[("MySQL")]
+    Admin["Web Admin"]
+  end
+
+  EAS["EAS Build/Update"]
+  MDM["Apple Business Manager / MDM"]
+
+  iPadA --> API
+  iPadB --> API
+  iPadC --> API
+  iPadD --> API
+  iPadE --> API
+  iPadF --> API
+
+  Admin --> API
+  API --> DB
+
+  EAS --> iPadA
+  EAS --> iPadB
+  EAS --> iPadC
+  EAS --> iPadD
+  EAS --> iPadE
+  EAS --> iPadF
+
+  MDM --> iPadA
+  MDM --> iPadB
+  MDM --> iPadC
+  MDM --> iPadD
+  MDM --> iPadE
+  MDM --> iPadF
+
+
+```
+
 
 ## Get started
 

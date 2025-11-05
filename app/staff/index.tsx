@@ -1,5 +1,7 @@
+import { useAuth } from '@/providers/AuthProvider'
+import { useRouter } from 'expo-router'
 import { useEffect, useMemo, useState } from "react"
-import { View, Text, Pressable, ScrollView, StyleSheet, useWindowDimensions, Alert, Image } from "react-native"
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
 
 const logo = require("../../assets/images/logo.png")
 
@@ -8,11 +10,11 @@ type Section = { title: string; items: string[] }
 const sections: Section[] = [
   { title: "第1クール", items: ["トップバリュー1", "トップバリュー2"] },
   { title: "第2クール", items: ["まつわか13", "住主", "まつわか3", "富士", "大和島"] },
-  { title: "第3クール", items: ["ヤオコー管", "ヤオコー管"] },
-  { title: "第4クール", items: ["ヤオコー管", "ヤオコー彩春"] },
-  { title: "第5クール", items: ["ヤオコー管", "自社春久山", "自社国産", "万代恵比寿"] },
-  { title: "第6クール", items: ["ヤオコー管", "万代恵比寿"] },
-  { title: "第7クール", items: ["ヤオコー管", "万代恵比寿"] }
+  { title: "第3クール", items: ["ヤオコー管1", "ヤオコー管2"] },
+  { title: "第4クール", items: ["ヤオコー管3", "ヤオコー彩春"] },
+  { title: "第5クール", items: ["ヤオコー管4", "自社春久山", "自社国産", "万代恵比寿1"] },
+  { title: "第6クール", items: ["ヤオコー管5", "万代恵比寿2"] },
+  { title: "第7クール", items: ["ヤオコー管6", "万代恵比寿3"] }
 ]
 
 function InfoCard({ title, value, sub, tone }: { title: string; value: string; sub?: string; tone?: "green" }) {
@@ -47,12 +49,14 @@ function ActionButton({ label, color, onPress }: { label: string; color: "green"
   )
 }
 
-export default function HomeScreen() {
+export default function StaffScreen() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [picked, setPicked] = useState<string | null>(null)
   const [now, setNow] = useState<string>("")
   const { width } = useWindowDimensions()
   const isWide = width >= 1024
+  const router = useRouter()
+  const {logout} = useAuth()
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -70,9 +74,18 @@ export default function HomeScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Image source={logo} style={{ width: 100, height: 50, resizeMode: "contain" }}/>
-        <Text style={styles.appTitle}>フルックス管理アプリ</Text>
-        <Text style={styles.appSub}>進捗管理</Text>
+        <View style={styles.brandRow}>
+          <Image source={logo} style={{ width: 100, height: 50, resizeMode: "contain" }}/>
+          <View>
+            <Text style={styles.appTitle}>フルックス管理アプリ</Text>
+            <Text style={styles.appSub}>進捗管理</Text>
+          </View>
+
+          <Pressable onPress={logout} hitSlop={12} style={({pressed}) => [styles.logoutBtn, pressed && {opacity: 0.85}]}>
+            <Text style={styles.logoutText}>ログアウト</Text>
+          </Pressable>
+        </View>
+
       </View>
 
       <View style={[styles.main, { flexDirection: isWide ? "row" : "column" }]}>
@@ -186,5 +199,8 @@ const styles = StyleSheet.create({
   empty: { backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: "#FFFFFF", padding: 28, alignItems: "center", justifyContent: "center", minHeight: 260 },
   emptyTitle: { fontSize: 20, fontWeight: "800", color: "#0F172A" },
   banner: { marginTop: 16, backgroundColor: "#FFFFFF", borderRadius: 16, paddingVertical: 18, paddingHorizontal: 16, alignSelf: "stretch" },
-  bannerText: { color: "#FFFFFF", textAlign: "center", fontSize: 18, fontWeight: "900", letterSpacing: 0.5 }
+  bannerText: { color: "#FFFFFF", textAlign: "center", fontSize: 18, fontWeight: "900", letterSpacing: 0.5 },
+  brandRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  logoutText: {color: '#fff', fontWeight: '700'},
+  logoutBtn: {paddingHorizontal: 20, paddingVertical: 10, marginLeft: 'auto', backgroundColor: '#147d37', borderRadius: 999}
 })
