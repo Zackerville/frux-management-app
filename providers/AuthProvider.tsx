@@ -1,8 +1,8 @@
 // providers/AuthProvider.tsx
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
-import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 let RNAsync: any;
 try {

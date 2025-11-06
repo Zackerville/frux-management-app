@@ -1,7 +1,8 @@
 import { useAuth } from '@/providers/AuthProvider'
 import { useRouter } from 'expo-router'
-import { useEffect, useMemo, useState } from "react"
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Alert, Image, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextStyle, useWindowDimensions, View } from "react-native"
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 const logo = require("../../assets/images/logo.png")
 
@@ -31,11 +32,11 @@ function InfoCard({ title, value, sub, tone }: { title: string; value: string; s
   )
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, labelStyle, valueStyle }: { label: string; value: string; labelStyle?: StyleProp<TextStyle>; valueStyle?: StyleProp<TextStyle> }) {
   return (
     <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
+      <Text style={[styles.detailLabel, labelStyle]}>{label}</Text>
+      <Text style={[styles.detailValue, valueStyle]}>{value}</Text>
     </View>
   )
 }
@@ -49,14 +50,60 @@ function ActionButton({ label, color, onPress }: { label: string; color: "green"
   )
 }
 
+function ActionLine({ label, color, onPress, ts }: {label: string; color: 'green'; onPress: () => void, ts?: string}) {
+  return (
+    <View style={styles.actionLine}>
+      <ActionButton label={label} color='green' onPress={onPress} />
+      <View style={styles.timeBox}>
+        <Text style={styles.timeText}>{ts ?? "-"}</Text>
+      </View>
+    </View>
+  )
+}
+
 export default function StaffScreen() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [picked, setPicked] = useState<string | null>(null)
   const [now, setNow] = useState<string>("")
+  const [target, setTarget] = useState<number>(1630)
+  const [done, setDone] = useState<number>(0)
+  const remaining = Math.max(target - done, 0)
+  const progress = target > 0 ? (done / target) : 0
+  const [bannerMessage, setBannerMessage] = useState("")
+  const hideRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [actionTime, setActionTime] = useState<{start?: string; pause?: string; resume?: string; finish?: string}>({})
+
+  const flash = (text: string) => {
+    setBannerMessage(text)
+    if (hideRef.current) clearTimeout(hideRef.current)
+    hideRef.current = setTimeout(() => setBannerMessage(""), 1000)
+  }
+  useEffect(() => () => { if(hideRef.current) clearTimeout(hideRef.current) }, [])
+
+  const stamp = () => {
+    const day = new Date()
+    const hour = day.getHours().toString().padStart(2, '0')
+    const minute = day.getMinutes().toString().padStart(2, '0')
+    return `${hour}:${minute}`
+  }
+
+  const mark = (k: keyof typeof actionTime, cb?: () => void) => () => {
+    setActionTime(s => ({ ...s, [k]: stamp() }))
+    cb?.()
+  } 
+
+  const fmtNum = (n: number) => n.toLocaleString('ja-JP')
+  const fmtPercentage = (p: number) => `${Math.round(p * 1000) /10}%`
   const { width } = useWindowDimensions()
-  const isWide = width >= 1024
+  const isWeb = width >= 1024
+  const isIpad = width >= 768
   const router = useRouter()
   const {logout} = useAuth()
+
+  const onPrepOK = () => {
+    setDone(v => Math.min(v + 10, target))
+    flash('準備OK')
+  }
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -72,7 +119,7 @@ export default function StaffScreen() {
   const toggle = (title: string) => setExpanded(prev => ({ ...prev, [title]: !prev[title] }))
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root}>
       <View style={styles.header}>
         <View style={styles.brandRow}>
           <Image source={logo} style={{ width: 100, height: 50, resizeMode: "contain" }}/>
@@ -88,8 +135,8 @@ export default function StaffScreen() {
 
       </View>
 
-      <View style={[styles.main, { flexDirection: isWide ? "row" : "column" }]}>
-        <View style={[styles.sidebar, { width: isWide ? 300 : "100%" }]}>
+      <View style={[styles.main, { flexDirection: isIpad ? "row" : "column" }]}>
+        <View style={[styles.sidebar, { width: isIpad ? 280 : "100%" }]}>
           <ScrollView contentContainerStyle={{ padding: 16 }}>
             {sections.map(sec => (
               <View key={sec.title} style={{ marginBottom: 16 }}>
@@ -125,9 +172,9 @@ export default function StaffScreen() {
               <Text style={styles.sectionDesc}>リアルタイムの生産進捗状況を監視・管理します</Text>
 
               <View style={[styles.row, { marginTop: 16 }]}>
-                <InfoCard title="生産進捗数" value="1,630" sub="セット" tone="green" />
-                <InfoCard title="進捗率" value="99.3%" sub="完了" tone="green" />
-                <InfoCard title="残数" value="0" sub="セット" tone="green" />
+                <InfoCard title="合計数" value={fmtNum(target)} sub="セット" tone="green" />
+                <InfoCard title="進捗率" value={fmtPercentage(progress)} sub="完了" tone="green" />
+                <InfoCard title="残数" value={fmtNum(remaining)} sub="セット" tone="green" />
                 <InfoCard title="現在時刻" value={now || "—"} tone="green" sub="進行中" />
               </View>
 
@@ -141,66 +188,259 @@ export default function StaffScreen() {
                 </View>
 
                 <View style={styles.detailCard} >
-                  <DetailRow label="終了見込時刻" value="12:03" />
-                  <DetailRow label="自動カウンター" value="10 セット"/>
-                  <DetailRow label="生産進捗数" value="80"/>
-                  <DetailRow label="生産進捗率" value="40%"/>
-                  <DetailRow label="残数" value="1550 セット"/>
-                </View>
-
-                <View style={styles.actionsCol}>
-                  <ActionButton label="生産 開始" color="green" onPress={() => Alert.alert("生産開始", "スタートしました")} />
-                  <ActionButton label="生産 中断" color="green" onPress={() => Alert.alert("生産中断", "一時停止しました")} />
-                  <ActionButton label="生産 再開" color="green" onPress={() => Alert.alert("生産再開", "再開しました")} />
-                  <ActionButton label="生産 終了" color="green" onPress={() => Alert.alert("生産終了", "終了しました")} />
-                  <ActionButton label="カウンター履歴" color="green" onPress={() => Alert.alert("履歴", "履歴を示します")} />
+                  <DetailRow label="終了見込時刻" value="12:03" labelStyle={{color: "#eb053eff" }} valueStyle={{color: "#eb053eff"}}/>
+                  <DetailRow label="生産進捗率" value={fmtPercentage(progress)} labelStyle={{color: "#eb053eff" }} valueStyle={{color: "#eb053eff"}}/>
+                  <DetailRow label="自動カウンター" value="10 セット" />
+                  <DetailRow label="生産進捗数" value={fmtNum(done)} /> 
+                  <DetailRow label="残数" value={fmtNum(remaining)} />
                 </View>
               </View>
 
+              <View style={styles.actionsCol}>
+                <ActionLine label="生産 開始" color="green" ts={actionTime.start} onPress={mark('start')} />
+                <ActionLine label="生産 中断" color="green" ts={actionTime.pause} onPress={mark('pause')} />
+                <ActionLine label="生産 再開" color="green" ts={actionTime.resume} onPress={mark('resume')} />
+                <ActionLine label="生産 終了" color="green" ts={actionTime.finish} onPress={mark('finish')} />
+                <ActionLine label="カウンター履歴" color="green" onPress={() => Alert.alert("履歴", "履歴を示します")} />
+              </View>
+
               <View style={styles.banner}>
-                <ActionButton label="10セット準備OK" color="gray" onPress={() => Alert.alert("準備", "準備完了")} />
+                <ActionButton label="10セット準備OK" color="gray" onPress={onPrepOK} />
+                <View style={styles.bannerMessage}>
+                  <Text style={styles.bannerMsgText}>{bannerMessage || " "}</Text>
+                </View>
               </View>
             </>
           )}
         </ScrollView>
       </View>
-    </View>
+    </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F1F5F9" },
-  header: { paddingHorizontal: 24, paddingVertical: 16, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E2E8F0" },
-  appTitle: { fontSize: 24, fontWeight: "800" },
-  appSub: { fontSize: 14, color: "#64748B" },
+  root: { 
+    flex: 1, 
+    backgroundColor: "#F1F5F9" 
+  },
+  header: { 
+    paddingHorizontal: 24, 
+    paddingVertical: 16, 
+    backgroundColor: "#FFFFFF", 
+    borderBottomWidth: 1, 
+    borderBottomColor: "#E2E8F0" 
+  },
+  appTitle: { 
+    fontSize: 24, 
+    fontWeight: "800" 
+  },
+  appSub: { 
+    fontSize: 14, 
+    color: "#64748B" 
+  },
   main: { flex: 1 },
-  sidebar: { backgroundColor: "#FFFFFF", borderRightWidth: 1, borderRightColor: "#E2E8F0" },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  sectionChevron: { fontSize: 18, color: "#0F172A" },
-  sectionTitle: { fontSize: 16, fontWeight: "700", color: "#0F172A", backgroundColor: "#BEBEBE", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
-  pill: { alignSelf: "flex-start", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
-  pillText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  sidebar: { 
+    backgroundColor: "#FFFFFF", 
+    borderRightWidth: 1, 
+    borderRightColor: "#E2E8F0" 
+  },
+  sectionHeader: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: 8 
+  },
+  sectionChevron: { 
+    fontSize: 18, 
+    color: "#0F172A" 
+  },
+  sectionTitle: { 
+    fontSize: 16, 
+    fontWeight: "700", 
+    color: "#0F172A", 
+    backgroundColor: "#BEBEBE", 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 999 
+  },
+  pill: { 
+    alignSelf: "flex-start", 
+    paddingHorizontal: 14, 
+    paddingVertical: 8, 
+    borderRadius: 999 
+  },
+  pillText: { 
+    color: "#FFFFFF", 
+    fontSize: 14, 
+    fontWeight: "700" 
+  },
   content: { flex: 1 },
-  sectionMainTitle: { fontSize: 22, fontWeight: "800" },
-  sectionDesc: { fontSize: 14, color: "#F5F5F5", marginTop: 4 },
-  row: { flexDirection: "row", gap: 16, marginTop: 12, flexWrap: "wrap" },
-  card: { flexGrow: 1, minWidth: 220, padding: 18, borderRadius: 16, borderWidth: 1 },
-  cardTitle: { fontSize: 14, color: "#FFFFFF" },
-  cardValue: { fontSize: 28, fontWeight: "800", marginTop: 6 },
-  cardSub: { fontSize: 12, color: "#FFFFFF", marginTop: 2 },
-  detailCard: { flex: 1, minWidth: 420, backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: "#FFFFFF", padding: 18 },
-  detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#FFFFFF" },
-  detailLabel: { fontSize: 16, color: "#334155", fontWeight: "600" },
-  detailValue: { fontSize: 16, color: "#0F172A", fontWeight: "700" },
-  actionsCol: { width: 260, gap: 12 },
-  actionRow:  { width: 260, gap: 20},
-  actionBtn: { paddingVertical: 16, borderRadius: 14, alignItems: "center" },
-  actionText: { color: "#FFFFFF", fontSize: 18, fontWeight: "800", letterSpacing: 0.5 },
-  empty: { backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: "#FFFFFF", padding: 28, alignItems: "center", justifyContent: "center", minHeight: 260 },
-  emptyTitle: { fontSize: 20, fontWeight: "800", color: "#0F172A" },
-  banner: { marginTop: 16, backgroundColor: "#FFFFFF", borderRadius: 16, paddingVertical: 18, paddingHorizontal: 16, alignSelf: "stretch" },
-  bannerText: { color: "#FFFFFF", textAlign: "center", fontSize: 18, fontWeight: "900", letterSpacing: 0.5 },
-  brandRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
-  logoutText: {color: '#fff', fontWeight: '700'},
-  logoutBtn: {paddingHorizontal: 20, paddingVertical: 10, marginLeft: 'auto', backgroundColor: '#147d37', borderRadius: 999}
+  sectionMainTitle: { 
+    fontSize: 22, 
+    fontWeight: "800" 
+  },
+  sectionDesc: { 
+    fontSize: 14, 
+    color: "#F5F5F5", 
+    marginTop: 4 
+  },
+  row: { 
+    flexDirection: "row", 
+    gap: 16, 
+    marginTop: 12, 
+    flexWrap: "wrap" 
+  },
+  card: { 
+    flexGrow: 1, 
+    minWidth: 220, 
+    padding: 18, 
+    borderRadius: 16, 
+    borderWidth: 1 
+  },
+  cardTitle: { 
+    fontSize: 14, 
+    color: "#FFFFFF" 
+  },
+  cardValue: { 
+    fontSize: 28, 
+    fontWeight: "800", 
+    marginTop: 6 
+  },
+  cardSub: { 
+    fontSize: 12, 
+    color: "#FFFFFF", 
+    marginTop: 2 
+  },
+  detailCard: { 
+    flex: 1, 
+    minWidth: 420, 
+    backgroundColor: "#FFFFFF", 
+    borderRadius: 16, 
+    borderWidth: 1, 
+    borderColor: "#FFFFFF", 
+    padding: 18 
+  },
+  detailRow: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    paddingVertical: 10, 
+    borderBottomWidth: 1, 
+    borderBottomColor: "#FFFFFF" 
+  },
+  detailLabel: { 
+    fontSize: 16, 
+    color: "#334155", 
+    fontWeight: "600" 
+  },
+  detailValue: { 
+    fontSize: 16, 
+    color: "#0F172A", 
+    fontWeight: "700" 
+  },
+  actionsCol: { 
+    marginTop: 16, 
+    width: 300, 
+    gap: 12 }
+    ,
+  actionRow:  { 
+    width: 260, 
+    gap: 20
+  },
+  actionBtn: { 
+    width: 200, 
+    paddingVertical: 16, 
+    borderRadius: 14, 
+    alignItems: "center" 
+  },
+  actionText: { 
+    color: "#FFFFFF", 
+    fontSize: 18, 
+    fontWeight: "800", 
+    letterSpacing: 0.5 
+  },
+  empty: { 
+    backgroundColor: "#FFFFFF", 
+    borderRadius: 16, 
+    borderWidth: 1, 
+    borderColor: "#FFFFFF", 
+    padding: 28, 
+    alignItems: "center", 
+    justifyContent: "center", 
+    minHeight: 260 
+  },
+  emptyTitle: { 
+    fontSize: 20, 
+    fontWeight: "800", 
+    color: "#0F172A" 
+  },
+  banner: { 
+    marginTop: 16, 
+    backgroundColor: "#FFFFFF", 
+    borderRadius: 16, 
+    paddingVertical: 18, 
+    paddingHorizontal: 16, 
+    alignSelf: "stretch",
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12 
+  },
+  bannerText: { 
+    color: "#FFFFFF", 
+    textAlign: "center", 
+    fontSize: 18, 
+    fontWeight: "900", 
+    letterSpacing: 0.5 
+  },
+  brandRow: {
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12
+  },
+  logoutText: {
+    color: '#fff', 
+    fontWeight: '700'
+  },
+  logoutBtn: {
+    paddingHorizontal: 20, 
+    paddingVertical: 10, 
+    marginLeft: 'auto', 
+    backgroundColor: '#147d37', 
+    borderRadius: 999
+  },
+  actionLine: {
+    width: 400, 
+    flexDirection: 'row', 
+    gap: 12, 
+    alignItems: 'stretch'
+  },
+  timeBox: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12
+  },
+  timeText: {
+    fontSize: 20, 
+    fontWeight: '800', 
+    color: '#0f172a', 
+    letterSpacing: 0.5
+  },
+  bannerMessage: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    minHeight: 56
+  },
+  bannerMsgText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#ec2e0cff',
+    letterSpacing: 0.5
+  }
 })
