@@ -17,9 +17,34 @@ export default function AdminLogin() {
     const cardWidth = Math.min(960, width - 48)
 
     const startAdmin = async () => {
-        await signInAsAdmin();
-        router.replace('/admin');
+      if (!account || !password) {
+        alert("アカウントとパスワードを入力してください。");
+        return;
+      }
+    
+      try {
+        const res = await fetch("http://localhost:3000/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account, password })
+        });
+    
+        const data = await res.json();
+    
+        if (!res.ok) {
+          alert(data.message);
+          return;
+        }
+    
+        // ✅ gọi đúng hàm signInAsAdmin và truyền adminId
+        await signInAsAdmin(data.adminId);
+    
+      } catch (err) {
+        console.log("Fetch error:", err);
+        alert("サーバーエラー (接続できません)");
+      }      
     };
+    
 
     return (
         <View style={styles.screen}>
@@ -60,7 +85,7 @@ export default function AdminLogin() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#f3f3f3',
+    backgroundColor: '#FFFFFF',
     paddingTop: 24,
     paddingHorizontal: 16,
   },
@@ -82,7 +107,7 @@ const styles = StyleSheet.create({
 
   card: {
     alignSelf: 'center',
-    marginTop: 16,
+    marginTop: 100,
     paddingHorizontal: 32,
     paddingVertical: 24,
     backgroundColor: CARD,

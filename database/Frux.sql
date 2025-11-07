@@ -98,3 +98,6 @@ INSERT INTO カウント履歴 (
 ) VALUES (
     'Aライン', '2025-12-27 09:30:00', '2025-12-27 12:00:00', '2025-12-25 13:00:00', 500, 1130
 );
+INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('フィ', '情報システム', 'fruxholding');
+INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('ティエン', '情報システム', 'fruxholding');
+INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('ヒュウ', '情報システム', 'fruxholding');
