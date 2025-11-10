@@ -36,7 +36,7 @@ function GreenInputWeb(p: any) {
     <input
       {...p}
       style={{
-        width: '100%',
+        width: '90%',
         height: 36,
         borderRadius: 10,
         border: 0,
@@ -223,7 +223,7 @@ export default function AdminDashboard() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f3f4f6', padding: 12 },
+  screen: { flex: 1, backgroundColor: '#FFFFFF', padding: 12 },
   header: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   factory: { flex: 1, fontSize: 26, fontWeight: '600', marginRight: 'auto', textAlign: 'center' },

@@ -1,6 +1,6 @@
 // app/auth/login.tsx
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../../providers/AuthProvider';
 
 const GREEN = '#157f3d';
