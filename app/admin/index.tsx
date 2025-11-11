@@ -134,7 +134,7 @@ function Meter({ value, max }: { value: number; max: number }) {
   )
 }
 
-function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => void }) {
+function LineCard({ line, onChange, onSave }: { line: Line; onChange: (next: Line) => void; onSave: (line: Line) => void }) {
   const { id, title, product, plannedEnd, etaEnd, target, manualCount, autoCount } = line
   const set = (patch: Partial<Line>) => onChange({ ...line, ...patch })
   const total = manualCount + autoCount
@@ -142,9 +142,29 @@ function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => vo
   return (
     <View style={styles.card}>
       <View style={styles.cardBanner}>
-        <Text style={styles.bannerPill}>{title}</Text>
-        {!!product && <Text style={styles.bannerPill}>{product}</Text>}
-      </View>
+  <Text style={styles.bannerPill}>{title}</Text>
+
+  {/* Ô input công ty */}
+  <TextInput
+  value={line.product || ""}
+  onChangeText={(txt) => set({ product: txt })}
+  style={{
+    width: 100,       // <-- giảm chiều ngang xuống 100px (thay số khác tuỳ ý)
+    marginLeft: 8,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    height: 40,
+    fontWeight: '800',
+    textAlign: 'center',
+    color: '#000',
+    fontSize: 25
+  }}
+
+/>
+
+</View>
+
 
       <View style={styles.cols}>
         <View style={styles.col}>
@@ -190,9 +210,17 @@ function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => vo
       </View>
 
       <View style={styles.footerRow}>
-        <Text style={styles.smallMuted}>ライン {id}</Text>
-        <Text style={styles.smallMuted}>{total}/{target}</Text>
-      </View>
+  <Text style={styles.smallMuted}>ライン {id}</Text>
+  <Text style={styles.smallMuted}>{total}/{target}</Text>
+
+  <Pressable
+    onPress={() => onSave(line)}
+    style={{ backgroundColor: '#147d37', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
+  >
+    <Text style={{ color: 'white', fontWeight: '700' }}>保存</Text>
+  </Pressable>
+</View>
+
     </View>
   )
 }
@@ -201,11 +229,32 @@ export default function AdminDashboard() {
   const { logout } = useAuth()
   const [lines, setLines] = useState<Line[]>(initLines)
   const update = (i: number, next: Line) => {
-    const copy = [...lines]
-    copy[i] = next
-    setLines(copy)
-  }
-
+    const copy = [...lines];
+    copy[i] = next;
+    setLines(copy);
+  };  // <-- Đóng hàm update ở đây
+  
+  const saveLine = async (line: Line) => {
+    try {
+      const res = await fetch("http://192.168.62.131:3000/api/saveLine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lineName: line.title,
+          plannedEnd: line.plannedEnd,
+          target: line.target,
+          productionCount: line.manualCount + line.autoCount,
+        }),
+      });
+  
+      const json = await res.json();
+      alert(json.message); // Hiển thị "保存しました ✅" hoặc "保存失敗 ❌"
+    } catch (err) {
+      alert("保存失敗 ❌");
+      console.error(err);
+    }
+  };
+  
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -220,7 +269,8 @@ export default function AdminDashboard() {
 
       <View style={styles.grid}>
         {lines.map((ln, i) => (
-          <LineCard key={ln.id} line={ln} onChange={(n) => update(i, n)} />
+          <LineCard key={ln.id} line={ln} onChange={(n) => update(i, n)} onSave={saveLine} />
+
         ))}
       </View>
     </View>
