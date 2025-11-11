@@ -23,7 +23,7 @@ export default function AdminLogin() {
       }
     
       try {
-        const res = await fetch("http://localhost:3000/admin/login", {
+        const res = await fetch("http://192.168.62.131:3000/admin/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ account, password })

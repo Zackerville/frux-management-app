@@ -59,7 +59,7 @@ app.post('/admin/login', async (req, res) => {
 });
 
 app.listen(3000, () => {
-  console.log("✅ Server đang chạy: http://localhost:3000");
+  console.log("✅ Server đang chạy: http://192.168.62.131:3000");
 });
 
 

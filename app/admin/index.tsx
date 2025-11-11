@@ -51,7 +51,7 @@ function GreenInputWeb(p: any) {
   )
 }
 
-function DateFieldStack({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
+function DateFieldStack({ value, onChange, readOnly = false }: { value: Date; onChange: (d: Date) => void; readOnly?: boolean }) {
   if (Platform.OS === 'web') {
     return (
       <View style={{ gap: 8 }}>
@@ -59,6 +59,7 @@ function DateFieldStack({ value, onChange }: { value: Date; onChange: (d: Date) 
           type="date"
           value={ymd(value)}
           onChange={(e: any) => {
+            if (readOnly) return
             const [Y, M, D] = e.target.value.split('-').map(Number)
             const n = new Date(value)
             n.setFullYear(Y)
@@ -66,17 +67,20 @@ function DateFieldStack({ value, onChange }: { value: Date; onChange: (d: Date) 
             n.setDate(D)
             onChange(n)
           }}
+          readOnly={readOnly}
         />
         <GreenInputWeb
           type="time"
           value={hm(value)}
           onChange={(e: any) => {
+            if (readOnly) return
             const [H, m] = e.target.value.split(':').map(Number)
             const n = new Date(value)
             n.setHours(H)
             n.setMinutes(m)
             onChange(n)
           }}
+          readOnly={readOnly}
         />
       </View>
     )
@@ -157,8 +161,9 @@ function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => vo
         </View>
 
         <View style={styles.col}>
-          <Text style={styles.sectionTitle}>終了見込時刻</Text>
-          <DateFieldStack value={etaEnd} onChange={(d) => set({ etaEnd: d })} />
+        <Text style={styles.sectionTitle}>終了見込時刻</Text>
+        <DateFieldStack value={etaEnd} onChange={(d) => set({ etaEnd: d })} readOnly={true} />
+
           <Text style={[styles.sectionTitle, { marginTop: 18 }]}>現在生産数</Text>
           <View style={styles.countRow}>
             <View style={styles.countBox}>
