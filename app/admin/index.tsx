@@ -18,7 +18,7 @@ const addMin = (m: number) => new Date(now.getTime() + m * 60_000)
 const logo = require('../../assets/images/logo.png')
 
 const initLines: Line[] = [
-  { id: 'A', title: 'Aライン', product: 'TV結', plannedEnd: addMin(390), etaEnd: addMin(420), target: 1630, manualCount: 50, autoCount: 503 },
+  { id: 'A', title: 'Aライン', product: '', plannedEnd: addMin(390), etaEnd: addMin(420), target: 1630, manualCount: 50, autoCount: 503 },
   { id: 'B', title: 'Bライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
   { id: 'C', title: 'Cライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
   { id: 'D', title: 'Dライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
@@ -149,7 +149,7 @@ function LineCard({ line, onChange, onSave }: { line: Line; onChange: (next: Lin
   value={line.product || ""}
   onChangeText={(txt) => set({ product: txt })}
   style={{
-    width: 100,       // <-- giảm chiều ngang xuống 100px (thay số khác tuỳ ý)
+    width: 150,       
     marginLeft: 8,
     backgroundColor: '#fff',
     borderRadius: 6,
