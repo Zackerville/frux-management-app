@@ -30,7 +30,7 @@ type Ctx = {
   user: User;
   hydrated: boolean;
   signInAsStaff: () => Promise<void>;
-  signInAsAdmin: () => Promise<void>;
+  signInAsAdmin: (admin) => Promise<void>;
   logout: () => Promise<void>;
 };
 const AuthCtx = createContext<Ctx>(null as any);

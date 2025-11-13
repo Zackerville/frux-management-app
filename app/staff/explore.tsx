@@ -1,112 +1,119 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+const PC_IP = "192.168.62.133";
 
-export default function TabTwoScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
-  );
+const API_BASE = Platform.select({
+  web: "http://127.0.0.1:3000",     
+  ios: `http://${PC_IP}:3000`,      
+  android: `http://${PC_IP}:3000`,   
+  default: `http://${PC_IP}:3000`,
+});
+
+
+const LINE_NAME = "Aライン"
+
+type Row = {
+  生産数: number | null
+  通過時刻: string | null
+  予定通過時刻: string | null
+  残数: number | null
+  開始時刻: string | null
+  終了時刻: string | null
+  中断時刻: string | null
+  再開時刻: string | null
 }
 
-const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-});
+function ftime(s?: string | null) {
+  if (!s) return "";
+  // Backend đã trả sẵn "HH:mm" → trả nguyên
+  if (/^\d{2}:\d{2}$/.test(s)) return s;
+  return String(s);
+}
+
+
+function fnum(n: number | null) {
+  if (n == null) return ""
+  return n.toLocaleString("ja-JP")
+}
+
+
+export default function CounterHistory() {
+  const [rows, setRows] = useState<Row[] | null>(null)
+  const [err, setErr] = useState<string>("")
+
+  const load = useCallback(async ()=>{
+    try{
+      const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(LINE_NAME)}/counter-history?limit=100`)
+      if(!r.ok) throw new Error(`HTTP ${r.status}`)
+      setRows(await r.json())
+      setErr("")
+    }catch(e:any){ setErr(String(e.message||e)) }
+  },[])
+
+  useFocusEffect(useCallback(()=>{ load(); },[]));
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(LINE_NAME)}/counter-history?limit=100`)
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        setRows(await r.json())
+      } catch (e: any) {
+        setErr(String(e.message || e))
+      }
+    }
+    run()
+  }, [])
+
+  if (err) return <View style={S.root}><Text style={S.title}>エラー: {err}</Text></View>
+  if (!rows) return <View style={S.root}><ActivityIndicator /></View>
+
+  return (
+    <View style={S.root}>
+      <View style={S.bar}>
+        <Text style={S.title}>カウント履歴</Text>
+      </View>
+      <ScrollView horizontal>
+        <View>
+          <View style={[S.row, S.head]}>
+            <Text style={[S.cell, S.h]}>生産数</Text>
+            <Text style={[S.cell, S.h]}>通過時刻</Text>
+            <Text style={[S.cell, S.h, { width: 140 }]}>予定通過時刻</Text>
+            <Text style={[S.cell, S.h]}>残数</Text>
+            <Text style={[S.cell, S.h]}>開始時刻</Text>
+            <Text style={[S.cell, S.h]}>終了時刻</Text>
+            <Text style={[S.cell, S.h]}>中断時刻</Text>
+            <Text style={[S.cell, S.h]}>再開時刻</Text>
+          </View>
+          <ScrollView style={{ maxHeight: 520 }}>
+            {rows.map((r, i) => (
+              <View key={i} style={S.row}>
+                <Text style={S.cell}>{fnum(r.生産数)}</Text>
+                <Text style={S.cell}>{ftime(r.通過時刻)}</Text>
+                <Text style={[S.cell, { width: 140 }]}>{ftime(r.予定通過時刻)}</Text>
+                <Text style={S.cell}>{fnum(r.残数)}</Text>
+                <Text style={S.cell}>{ftime(r.開始時刻)}</Text>
+                <Text style={S.cell}>{ftime(r.終了時刻)}</Text>
+                <Text style={S.cell}>{ftime(r.中断時刻)}</Text>
+                <Text style={S.cell}>{ftime(r.再開時刻)}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </ScrollView>
+    </View>
+  )
+}
+
+const S = StyleSheet.create({
+  root: { flex: 1, padding: 16, backgroundColor: "#F1F5F9" },
+  title: { fontSize: 20, fontWeight: "800", marginBottom: 12 },
+  row: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
+  head: { backgroundColor: "#E5E7EB" },
+  cell: { width: 120, paddingVertical: 10, paddingHorizontal: 8, fontSize: 16, fontWeight: "600" },
+  h: { fontWeight: "800" },
+  bar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  back: { fontSize: 16, fontWeight: "700", color: "#2563EB" },
+})

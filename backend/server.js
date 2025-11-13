@@ -11,9 +11,10 @@ app.use(express.json());
 const db = await mysql.createPool({
   host: '127.0.0.1',
   user: 'root',
-  password: '180505huy',
+  password: 'fruxholding',
   database: 'FRUX'
 });
+
 
 // API LOGIN ADMIN
 app.post('/admin/login', async (req, res) => {
@@ -58,8 +59,224 @@ app.post('/admin/login', async (req, res) => {
   }
 });
 
-app.listen(3000, () => {
-  console.log("✅ Server đang chạy: http://localhost:3000");
+// app.get('/health', (req, res) => res.json({ ok: true }));
+
+async function withTx(fn) {
+  const conn = await db.getConnection();
+  try { await conn.beginTransaction(); const r = await fn(conn); await conn.commit(); return r; }
+  catch(e){ await conn.rollback(); throw e; } finally { conn.release(); }
+}
+
+app.get("/staff/lines/:line/current", async (req,res) => {
+  const [rows] = await db.query(
+    "SELECT タスクID, 会社名, トータルPC数, 生産数, 手動数, 自動数, ステータス, 予定終了日, 予定終了時刻, 終了見込日, 終了見込時刻 \
+     FROM 生産タスク \
+     WHERE ライン名=? AND ステータス IN ('in_progress', 'pending', 'paused', 'done') \
+     ORDER BY タスクID DESC LIMIT 1",
+    [req.params.line]
+  );
+
+  if(!rows.length) return res.status(404).json({message:"no task"});
+  const t = rows[0];
+  const produced = t.生産数;
+  const progressPct = Math.floor((produced / t.トータルPC数) * 100);
+  const remaining = Math.max(t.トータルPC数 - produced, 0);
+  const plannedFinishAt = t.予定終了日 && t.予定終了時刻 ? `${t.予定終了日.toISOString().slice(0,10)}T${t.予定終了時刻}` : null;
+  const expectedFinishAt = t.終了見込日 && t.終了見込時刻 ? `${t.終了見込日.toISOString().slice(0,10)}T${t.終了見込時刻}` : null;
+
+  res.json({ 
+    lineName: req.params.line, 
+    productName: t.会社名, 
+    totalTarget: t.トータルPC数, produced, progressPct, remaining, plannedFinishAt, expectedFinishAt, 
+    status: t.ステータス, 
+    now: new Date().toISOString() });
 });
 
+app.post("/staff/lines/:line/planned-finish", async (req,res) => {
+  const iso = req.body.plannedFinishAt;
+  const d = iso.split("T")[0];
+  const h = iso.split("T")[1] + ":00";
+  const [row] = await db.query("SELECT タスクID \
+                                FROM 生産タスク \
+                                WHERE ライン名=? AND ステータス IN ('in_progress','pending') \
+                                ORDER BY タスクID DESC LIMIT 1",
+                                [req.params.line]);
+
+  if(!row.length) return res.status(404).json({message:"no task"});
+  await db.query("UPDATE 生産タスク SET 予定終了日=?, 予定終了時刻=? WHERE タスクID=?", [d, h, row[0].タスクID]);
+  res.json({ok:true});
+});
+
+app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
+  try {
+    const delta = Number(req.body?.delta || 0);
+
+    await withTx(async (conn) => {
+      let [rows] = await conn.query(
+         `SELECT タスクID, トータルPC数, 生産数, 手動数, ステータス
+          FROM 生産タスク
+          WHERE ライン名=? AND ステータス IN ('in_progress','pending','paused','done')
+          ORDER BY タスクID DESC
+          LIMIT 1 FOR UPDATE`,
+        [req.params.line]
+      );
+
+      if (!rows.length) {
+        const [ins] = await conn.query(
+          `INSERT INTO 生産タスク(管理者ID, ライン名, 会社名, ステータス, トータルPC数, 生産数, 手動数, 自動数)
+           VALUES (1, ?, 'TV結', 'in_progress', 1630, 0, 0, 0)`,
+          [req.params.line]
+        );
+        rows = [{ タスクID: ins.insertId, トータルPC数: 1630, 生産数: 0, 手動数: 0, ステータス: 'in_progress' }];
+      }
+
+      const t = rows[0];
+
+      if (t.ステータス === 'paused') {
+        const err = new Error('paused');
+        err.status = 409;
+        err.payload = { message: 'paused' };
+        throw err;
+      }
+      if (t.ステータス === 'done') {
+        const err = new Error('finished');
+        err.status = 409;
+        err.payload = { message: 'finished' };
+        throw err;
+      }
+
+      const np = Math.min(t.トータルPC数, Math.max(0, t.生産数 + delta));
+
+      await conn.query(
+        "UPDATE 生産タスク SET 生産数=?, 手動数=手動数+? WHERE タスクID=?",
+        [np, delta, t.タスクID]
+      );
+
+      await conn.query(
+        `INSERT INTO カウント履歴(タスクID, ライン名, 通過時刻, 生産数, 残数, イベント種別, 差分)
+         VALUES(?, ?, NOW(), ?, GREATEST(?-?,0), ?, ?)`,
+        [t.タスクID, req.params.line, np, t.トータルPC数, np,
+         delta >= 0 ? "manual_inc" : "manual_dec", delta]
+      );
+    });
+
+    res.json({ ok: true, now: new Date().toISOString() });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json(e.payload);
+    next(e);
+  }
+});
+
+
+app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
+  try {
+    const type = req.params.type;
+    const col =
+      type === "start" ? "開始時刻" :
+      type === "pause" ? "中断時刻" :
+      type === "resume" ? "再開時刻" :
+      type === "finish" ? "終了時刻" : null;
+    if (!col) return res.status(400).json({ message: "bad type" });
+
+    await withTx(async (conn) => 
+    {
+      let [rows] = await conn.query(
+         `SELECT タスクID, トータルPC数, 生産数, ステータス
+          FROM 生産タスク
+          WHERE ライン名=? AND ステータス IN ('in_progress','pending', 'paused', 'done')
+          ORDER BY タスクID DESC
+          LIMIT 1 FOR UPDATE`,
+        [req.params.line]
+      );
+
+      if (!rows.length && type === "start") {
+        const [ins] = await conn.query(
+          `INSERT INTO 生産タスク (ライン名, 会社名, ステータス, トータルPC数, 生産数, 手動数, 自動数)
+           VALUES (?, 'TV結', 'in_progress', 1630, 0, 0, 0)`,
+          [req.params.line]
+        );
+        rows = [{ タスクID: ins.insertId, トータルPC数: 1630, 生産数: 0, ステータス: "in_progress" }];
+      }
+
+      // if (!rows.length) {
+      //   res.status(409).json({ message: "no active task" });
+      //   return;
+      // }
+
+      if (!rows.length) {
+        return res.json({ ok: true, noop: true });
+      }
+
+      const t = rows[0];
+
+      if (type === "start") 
+      {
+        await conn.query(
+          "UPDATE 生産タスク SET 生産数=0, 手動数=0, 自動数=0, ステータス='in_progress' WHERE タスクID=?",
+          [t.タスクID]
+        );
+      }
+      if (type === 'pause')
+      {
+        await conn.query(
+          "UPDATE 生産タスク SET ステータス='paused' WHERE タスクID=?",
+          [t.タスクID]
+        );
+      }
+      if (type === 'resume')
+      {
+        await conn.query(
+          "UPDATE 生産タスク SET ステータス='in_progress' WHERE タスクID=?",
+          [t.タスクID]
+        );
+      }
+
+      const producedForHistory = (type === "start") ? 0 : t.生産数;
+      await conn.query(
+        `INSERT INTO カウント履歴(タスクID, ライン名, ${col}, 生産数, 残数, イベント種別)
+         VALUES(?, ?, NOW(), ?, GREATEST(?-?,0), ?)`,
+        [t.タスクID, req.params.line, producedForHistory, t.トータルPC数, producedForHistory, type]
+      );
+
+      if (type === "finish") {
+        await conn.query("UPDATE 生産タスク SET ステータス='done' WHERE タスクID=?", [t.タスクID]);
+      }
+    });
+
+    res.json({ ok: true, now: new Date().toISOString() });
+  } catch (e) { next(e); }
+});
+
+
+
+app.get("/staff/lines/:line/counter-history", async (req, res, next) => {
+  const limit = Number(req.query.limit || 100);
+  const conn = await db.getConnection();
+  try {
+    const [rows] = await conn.query(
+      `SELECT
+        生産数,
+        DATE_FORMAT(通過時刻, '%H:%i') AS 通過時刻,
+        DATE_FORMAT(予定通過時刻, '%H:%i') AS 予定通過時刻,
+        残数,
+        DATE_FORMAT(開始時刻, '%H:%i') AS 開始時刻,
+        DATE_FORMAT(終了時刻, '%H:%i') AS 終了時刻,
+        DATE_FORMAT(中断時刻, '%H:%i') AS 中断時刻,
+        DATE_FORMAT(再開時刻, '%H:%i') AS 再開時刻
+      FROM カウント履歴
+      WHERE ライン名=?
+      ORDER BY COALESCE(通過時刻,開始時刻,終了時刻,中断時刻,再開時刻) DESC
+      LIMIT ?`,
+      [req.params.line, Number(req.query.limit || 100)]
+    );
+
+    res.json(rows);
+  } catch (e) { next(e); } finally { conn.release(); }
+});
+
+const PORT = Number(process.env.PORT || 3000);
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+});
 

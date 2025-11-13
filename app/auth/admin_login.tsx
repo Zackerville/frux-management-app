@@ -1,10 +1,19 @@
 import { useAuth } from '@/providers/AuthProvider';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 const GREEN = '#157F3D'
 const CARD = '#E6E6E6'
+
+const PC_IP = "192.168.62.133";   
+
+const ADMIN_API_BASE = Platform.select({
+  web: "http://127.0.0.1:3000",           
+  ios: `http://${PC_IP}:3000`,            
+  android: `http://${PC_IP}:3000`,        
+  default: `http://${PC_IP}:3000`,
+});
 
 export default function AdminLogin() {
     const router = useRouter();
@@ -23,7 +32,7 @@ export default function AdminLogin() {
       }
     
       try {
-        const res = await fetch("http://localhost:3000/admin/login", {
+        const res = await fetch(`${ADMIN_API_BASE}/admin/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ account, password })

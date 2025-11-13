@@ -1,15 +1,26 @@
 import { useAuth } from '@/providers/AuthProvider'
 import { useRouter } from 'expo-router'
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Alert, Image, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextStyle, useWindowDimensions, View } from "react-native"
+import { Image, Platform, Pressable, ScrollView, StyleProp, StyleSheet, Text, TextStyle, useWindowDimensions, View } from "react-native"
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 const logo = require("../../assets/images/logo.png")
 
+const PC_IP = "192.168.62.133";
+
+const API_BASE = Platform.select({
+  web: "http://127.0.0.1:3000",     
+  ios: `http://${PC_IP}:3000`,       
+  android: `http://${PC_IP}:3000`,   
+  default: `http://${PC_IP}:3000`,
+});
+
+const LINE = 'Aライン'
+
 type Section = { title: string; items: string[] }
 
 const sections: Section[] = [
-  { title: "第1クール", items: ["トップバリュー1", "トップバリュー2"] },
+  { title: "第1クール", items: ["TV1", "TV2"] },
   { title: "第2クール", items: ["まつわか13", "住主", "まつわか3", "富士", "大和島"] },
   { title: "第3クール", items: ["ヤオコー管1", "ヤオコー管2"] },
   { title: "第4クール", items: ["ヤオコー管3", "ヤオコー彩春"] },
@@ -41,24 +52,25 @@ function DetailRow({ label, value, labelStyle, valueStyle }: { label: string; va
   )
 }
 
-function ActionButton({ label, color, onPress }: { label: string; color: "green" | "gray"; onPress: () => void }) {
-  const bg = color === "green" ? "#147D37" : color === "gray" ? "#BEBEBE" : "#F8F8F8"
+function ActionButton({ label, color, onPress, disabled }: { label: string; color: "green" | "red"; onPress: () => void; disabled?: boolean }) {
+  const bg = color === "green" ? "#147D37" : color === "red" ? "#ef0c0cff" : "#F8F8F8"
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.actionBtn, { backgroundColor: bg, opacity: pressed ? 0.9 : 1 }]}>
+    <Pressable onPress={onPress} disabled={!!disabled} style={({ pressed }) => [styles.actionBtn, { backgroundColor: bg, opacity: disabled ? 0.5 : (pressed ? 0.9 : 1) }]}>
       <Text style={styles.actionText}>{label}</Text>
     </Pressable>
-  )
+  );
 }
 
-function ActionLine({ label, color, onPress, ts }: {label: string; color: 'green'; onPress: () => void, ts?: string}) {
+function ActionLine({ label, color, onPress, ts, note }: {label: string; color: 'green'; onPress: () => void, ts?: string, note?: string}) {
   return (
     <View style={styles.actionLine}>
       <ActionButton label={label} color='green' onPress={onPress} />
       <View style={styles.timeBox}>
         <Text style={styles.timeText}>{ts ?? "-"}</Text>
+        {!!note && <Text style={styles.noteText}>{note}</Text>}
       </View>
     </View>
-  )
+  );
 }
 
 export default function StaffScreen() {
@@ -72,13 +84,75 @@ export default function StaffScreen() {
   const [bannerMessage, setBannerMessage] = useState("")
   const hideRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [actionTime, setActionTime] = useState<{start?: string; pause?: string; resume?: string; finish?: string}>({})
+  const [current, setCurrent] = useState<{ totalTarget:number; produced:number; remaining:number; progressPct:number }|null>(null);
+  const [finishNote, setFinishNote] = useState<string | undefined>();
+  const [paused, setPaused] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  const flash = (text: string) => {
-    setBannerMessage(text)
-    if (hideRef.current) clearTimeout(hideRef.current)
-    hideRef.current = setTimeout(() => setBannerMessage(""), 1000)
+  const canPrep = !paused && (current?.remaining ?? 0) > 0;
+
+  async function loadCurrent() 
+  {
+    const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(LINE)}/current`);
+    if(!r.ok) throw new Error(await r.text());
+    const j = await r.json();
+    setCurrent(j);
+    setTarget(j.totalTarget ?? 0);
+    setDone(j.produced ?? 0);
+    setPaused(j.status === 'paused');
   }
-  useEffect(() => () => { if(hideRef.current) clearTimeout(hideRef.current) }, [])
+
+  async function action(type: 'start'|'pause'|'resume'|'finish') 
+  {
+    const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(LINE)}/actions/${type}`, { method: 'POST' });
+    const data = await r.json().catch(() => ({}));
+
+    if (!r.ok) 
+    {
+      if (data?.message === 'no active task') return { ok: true, noop: true };
+      throw new Error(data?.message || `HTTP ${r.status}`);
+    }
+    return data;
+  }
+
+
+  async function manual(delta:number) 
+  {
+    try {
+      const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(LINE)}/counters/manual`, 
+      {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ delta })
+      });
+
+      if (!r.ok) 
+      {
+        let j: any = {};
+        try { j = await r.json(); } catch {}
+        if (j?.message === 'paused') 
+        {
+          alert('中断中：先に「生産 再開」を押してください');
+          return;
+        }
+        if (j?.message === 'finished') 
+        {
+          alert('このタスクは終了しました');
+          return;
+        }
+        throw new Error(j?.message || `HTTP ${r.status}`);
+      }
+    } finally { await loadCurrent().catch(()=>{}); }
+  }
+
+
+  useEffect(()=>{ loadCurrent().catch(console.error) },[]);
+    const flash = (text: string) => {
+      setBannerMessage(text)
+      if (hideRef.current) clearTimeout(hideRef.current)
+      hideRef.current = setTimeout(() => setBannerMessage(""), 1000)
+    }
+    useEffect(() => () => { if(hideRef.current) clearTimeout(hideRef.current) }, [])
 
   const stamp = () => {
     const day = new Date()
@@ -100,10 +174,21 @@ export default function StaffScreen() {
   const router = useRouter()
   const {logout} = useAuth()
 
-  const onPrepOK = () => {
-    setDone(v => Math.min(v + 10, target))
-    flash('準備OK')
-  }
+  const onPrepOK = async () => 
+  {
+    if (!canPrep) 
+    {
+      alert(paused ? '中断中：先に「生産 再開」を押してください' : 'このタスクは終了しました');
+      return;
+    }
+    try 
+    {
+      await manual(10);            
+      flash('準備OK');              
+      await loadCurrent().catch(() => {});
+    } catch {}
+  };
+
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -197,15 +282,15 @@ export default function StaffScreen() {
               </View>
 
               <View style={styles.actionsCol}>
-                <ActionLine label="生産 開始" color="green" ts={actionTime.start} onPress={mark('start')} />
-                <ActionLine label="生産 中断" color="green" ts={actionTime.pause} onPress={mark('pause')} />
-                <ActionLine label="生産 再開" color="green" ts={actionTime.resume} onPress={mark('resume')} />
-                <ActionLine label="生産 終了" color="green" ts={actionTime.finish} onPress={mark('finish')} />
-                <ActionLine label="カウンター履歴" color="green" onPress={() => Alert.alert("履歴", "履歴を示します")} />
+                <ActionLine label="生産 開始"  color="green" ts={actionTime.start}  onPress={async () => { mark('start')(); const r = await action('start'); if (!r?.noop) { setPaused(false); setFinishNote(undefined); setDone(0); await loadCurrent().catch(() => {}); } }} />
+                <ActionLine label="生産 中断"  color="green" ts={actionTime.pause}  onPress={async () => { mark('pause')(); const r = await action('pause'); if(r?.ok) { setPaused(true); await loadCurrent().catch(() => {}); } }} />
+                <ActionLine label="生産 再開"  color="green" ts={actionTime.resume} onPress={async () => { mark('resume')(); const r = await action('resume'); if(r?.ok) { setPaused(false); await loadCurrent().catch(() => {}); } }} />
+                <ActionLine label="生産 終了"  color="green" ts={actionTime.finish} note={finishNote} onPress={async () => { mark('finish')(); await action('finish'); setFinishNote('生産終了しました！'); setTimeout(() => setFinishNote(undefined), 3000); await loadCurrent().catch(() => {}); }} />
+                <ActionLine label="カウンター履歴" color="green" onPress={() => router.push('/staff/explore')} />
               </View>
 
               <View style={styles.banner}>
-                <ActionButton label="10セット準備OK" color="gray" onPress={onPrepOK} />
+                <ActionButton label="10セット準備OK" color="red" disabled={!canPrep || sending} onPress={onPrepOK} />
                 <View style={styles.bannerMessage}>
                   <Text style={styles.bannerMsgText}>{bannerMessage || " "}</Text>
                 </View>
@@ -441,6 +526,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#ec2e0cff',
+    letterSpacing: 0.5
+  },
+  noteText: {
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#ec2e0c',
     letterSpacing: 0.5
   }
 })
