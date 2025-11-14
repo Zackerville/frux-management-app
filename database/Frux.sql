@@ -103,6 +103,7 @@ INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('フィ
 INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('ティエン', '情報システム', 'fruxholding');
 INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('ヒュウ', '情報システム', 'fruxholding');
 INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('tien', '情報システム', 'fruxholding');
+INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('tienminh', '情報システム', 'tienminh2004');
 
 -- code from here from workbench
 USE FRUX;
@@ -148,7 +149,6 @@ ALTER TABLE カウント履歴
 ALTER TABLE カウント履歴
   ADD CONSTRAINT fk_カウント履歴_生産タスク
     FOREIGN KEY (`タスクID`) REFERENCES 生産タスク(`タスクID`);
-    
 
 ALTER TABLE カウント履歴
   MODIFY COLUMN `開始時刻`     DATETIME NULL DEFAULT NULL,
@@ -158,3 +158,31 @@ ALTER TABLE カウント履歴
   MODIFY COLUMN `通過時刻`     DATETIME NULL DEFAULT NULL,
   MODIFY COLUMN `予定通過時刻` DATETIME NULL DEFAULT NULL;
 
+ALTER TABLE 生産タスク
+	ADD COLUMN 予定開始時刻 TIME NULL AFTER ステータス;
+    
+USE FRUX;
+
+UPDATE 生産タスク
+SET 予定開始時刻 = '09:30'
+WHERE タスクID >= 1
+  AND 予定開始時刻 IS NULL;
+  
+UPDATE 生産タスク
+SET 予定終了時刻 = '16:30'
+WHERE タスクID >= 1
+  AND 予定終了時刻 IS NULL;
+
+
+USE FRUX;
+SHOW COLUMNS FROM カウント履歴 LIKE '予定通過時刻';
+
+USE FRUX;
+DESCRIBE 生産タスク;
+
+ALTER TABLE カウント履歴
+  MODIFY COLUMN 予定通過時刻 TIME NULL;
+
+SELECT * FROM 生産タスク;
+
+SELECT * FROM 管理者;

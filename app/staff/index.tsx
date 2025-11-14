@@ -15,12 +15,12 @@ const API_BASE = Platform.select({
   default: `http://${PC_IP}:3000`,
 });
 
-const LINE = 'Aライン'
+const LINE = 'Aライン';
 
 type Section = { title: string; items: string[] }
 
 const sections: Section[] = [
-  { title: "第1クール", items: ["TV1", "TV2"] },
+  { title: "第1クール", items: ["TV結1", "TV結2"] },
   { title: "第2クール", items: ["まつわか13", "住主", "まつわか3", "富士", "大和島"] },
   { title: "第3クール", items: ["ヤオコー管1", "ヤオコー管2"] },
   { title: "第4クール", items: ["ヤオコー管3", "ヤオコー彩春"] },
@@ -83,11 +83,22 @@ export default function StaffScreen() {
   const progress = target > 0 ? (done / target) : 0
   const [bannerMessage, setBannerMessage] = useState("")
   const hideRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [actionTime, setActionTime] = useState<{start?: string; pause?: string; resume?: string; finish?: string}>({})
-  const [current, setCurrent] = useState<{ totalTarget:number; produced:number; remaining:number; progressPct:number }|null>(null);
+  const [actionTime, setActionTime] = useState<{start?: string; 
+                                                pause?: string; 
+                                                resume?: string; 
+                                                finish?: string}>({})
   const [finishNote, setFinishNote] = useState<string | undefined>();
   const [paused, setPaused] = useState(false);
   const [sending, setSending] = useState(false);
+  const [current, setCurrent] = useState<{ totalTarget: number; 
+                                           produced: number; 
+                                           remaining: number; 
+                                           progressPct: number;
+                                           plannedStartTime?: string | null;
+                                           plannedEndTime?: string | null;
+                                           plannedPassTime?: string | null;
+                                           expectedFinishTime?: string | null;
+                                           status?: string; }|null>(null);
 
   const canPrep = !paused && (current?.remaining ?? 0) > 0;
 
@@ -168,6 +179,7 @@ export default function StaffScreen() {
 
   const fmtNum = (n: number) => n.toLocaleString('ja-JP')
   const fmtPercentage = (p: number) => `${Math.round(p * 1000) /10}%`
+  const fmtTime = (t?: string | null) => t ? t.slice(0, 5) : "-";
   const { width } = useWindowDimensions()
   const isWeb = width >= 1024
   const isIpad = width >= 768
@@ -209,8 +221,7 @@ export default function StaffScreen() {
         <View style={styles.brandRow}>
           <Image source={logo} style={{ width: 100, height: 50, resizeMode: "contain" }}/>
           <View>
-            <Text style={styles.appTitle}>フルックス管理アプリ</Text>
-            <Text style={styles.appSub}>進捗管理</Text>
+            <Text style={styles.appTitle}>おせち進捗管理</Text>
           </View>
 
           <Pressable onPress={logout} hitSlop={12} style={({pressed}) => [styles.logoutBtn, pressed && {opacity: 0.85}]}>
@@ -221,7 +232,7 @@ export default function StaffScreen() {
       </View>
 
       <View style={[styles.main, { flexDirection: isIpad ? "row" : "column" }]}>
-        <View style={[styles.sidebar, { width: isIpad ? 280 : "100%" }]}>
+        <View style={[styles.sidebar, { width: isIpad ? 170 : "100%" }]}>
           <ScrollView contentContainerStyle={{ padding: 16 }}>
             {sections.map(sec => (
               <View key={sec.title} style={{ marginBottom: 16 }}>
@@ -254,7 +265,6 @@ export default function StaffScreen() {
           ) : (
             <>
               <Text style={styles.sectionMainTitle}>{picked}</Text>
-              <Text style={styles.sectionDesc}>リアルタイムの生産進捗状況を監視・管理します</Text>
 
               <View style={[styles.row, { marginTop: 16 }]}>
                 <InfoCard title="合計数" value={fmtNum(target)} sub="セット" tone="green" />
@@ -266,14 +276,14 @@ export default function StaffScreen() {
               <View style={[styles.row, { alignItems: "flex-start" }]}>
                 <View style={styles.detailCard}>
                   <DetailRow label="商品名" value="TV結" />
-                  <DetailRow label="ラインA" value="盛付ライン" />
-                  <DetailRow label="予定開始時刻" value="9:30" />
-                  <DetailRow label="予定終了時刻" value="16:30" />
-                  <DetailRow label="予定通過時刻" value="16:01" />
+                  <DetailRow label="盛付ライン" value="Aライン" />
+                  <DetailRow label="予定開始時刻" value={fmtTime(current?.plannedStartTime) ?? '-'} />
+                  <DetailRow label="予定終了時刻" value={fmtTime(current?.plannedEndTime) ?? '-'} />
+                  <DetailRow label="予定通過時刻" value={fmtTime(current?.plannedPassTime) ?? '-'} />
                 </View>
 
                 <View style={styles.detailCard} >
-                  <DetailRow label="終了見込時刻" value="12:03" labelStyle={{color: "#eb053eff" }} valueStyle={{color: "#eb053eff"}}/>
+                  <DetailRow label="終了見込時刻" value={fmtTime(current?.expectedFinishTime) ?? '-'} labelStyle={{color: "#eb053eff" }} valueStyle={{color: "#eb053eff"}}/>
                   <DetailRow label="生産進捗率" value={fmtPercentage(progress)} labelStyle={{color: "#eb053eff" }} valueStyle={{color: "#eb053eff"}}/>
                   <DetailRow label="自動カウンター" value="10 セット" />
                   <DetailRow label="生産進捗数" value={fmtNum(done)} /> 
@@ -318,10 +328,6 @@ const styles = StyleSheet.create({
   appTitle: { 
     fontSize: 24, 
     fontWeight: "800" 
-  },
-  appSub: { 
-    fontSize: 14, 
-    color: "#64748B" 
   },
   main: { flex: 1 },
   sidebar: { 
