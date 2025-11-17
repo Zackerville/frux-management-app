@@ -1,5 +1,5 @@
-import { useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 
 const PC_IP = "192.168.62.133";
@@ -12,7 +12,7 @@ const API_BASE = Platform.select({
 });
 
 
-const LINE_NAME = "Aライン"
+const DEFAULT_LINE = "Aライン"
 
 type Row = {
   生産数: number | null
@@ -42,30 +42,37 @@ function fnum(n: number | null) {
 export default function CounterHistory() {
   const [rows, setRows] = useState<Row[] | null>(null)
   const [err, setErr] = useState<string>("")
+  const params = useLocalSearchParams<{ line?: string; product?: string }>();
+  const line_name = typeof params.line === 'string' && params.line ? params.line : DEFAULT_LINE;
+  const product_name = typeof params.product === 'string' && params.product ? params.product : "";
 
-  const load = useCallback(async ()=>{
-    try{
-      const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(LINE_NAME)}/counter-history?limit=100`)
+  const load = useCallback(async () => {
+    try {
+      let url = `${API_BASE}/staff/lines/${encodeURIComponent(line_name)}/counter-history?limit=100`;
+      if (product_name)
+        url += `&product=${encodeURIComponent(product_name)}`;
+      
+      const r = await fetch(url);
       if(!r.ok) throw new Error(`HTTP ${r.status}`)
       setRows(await r.json())
       setErr("")
-    }catch(e:any){ setErr(String(e.message||e)) }
-  },[])
+    } catch(e: any) { setErr(String(e.message || e)) }
+  }, [line_name, product_name]);
 
-  useFocusEffect(useCallback(()=>{ load(); },[]));
+  useFocusEffect(useCallback(() => { load(); },[load]));
 
-  useEffect(() => {
-    const run = async () => {
-      try {
-        const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(LINE_NAME)}/counter-history?limit=100`)
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        setRows(await r.json())
-      } catch (e: any) {
-        setErr(String(e.message || e))
-      }
-    }
-    run()
-  }, [])
+  // useEffect(() => {
+  //   const run = async () => {
+  //     try {
+  //       const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(LINE_NAME)}/counter-history?limit=100`)
+  //       if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  //       setRows(await r.json())
+  //     } catch (e: any) {
+  //       setErr(String(e.message || e))
+  //     }
+  //   }
+  //   run()
+  // }, [])
 
   if (err) return <View style={S.root}><Text style={S.title}>エラー: {err}</Text></View>
   if (!rows) return <View style={S.root}><ActivityIndicator /></View>

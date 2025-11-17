@@ -85,7 +85,7 @@ INSERT INTO 生産タスク (
     管理者ID, ライン名, 会社名, ステータス, トータルPC数, 生産数, 
     予定終了時刻, 予定終了日, 終了見込時刻, 終了見込日
 ) VALUES (
-    1, 'Aライン', 'TV結', 'in_progress', 1630, 550, 
+    1, 'Aライン', 'TV結', 'in_progress', 1630, 0, 
     '16:30', '2025-12-27', '20:00', '2025-12-31'
 );
 
@@ -184,5 +184,7 @@ ALTER TABLE カウント履歴
   MODIFY COLUMN 予定通過時刻 TIME NULL;
 
 SELECT * FROM 生産タスク;
+SELECT * FROM カウント履歴;
 
 SELECT * FROM 管理者;
+DELETE FROM 生産タスク WHERE タスクID = 2; 

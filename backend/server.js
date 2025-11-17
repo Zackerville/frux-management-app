@@ -68,15 +68,29 @@ async function withTx(fn) {
 }
 
 app.get("/staff/lines/:line/current", async (req,res) => {
+  const line = req.params.line;
+  const product = req.query.product ? String(req.query.product) : null;
+
+  const params = [line];
+  let where = 'WHERE ライン名=?';
+
+  if (product)
+  {
+    where += ' AND 会社名=?';
+    params.push(product);
+  }
+  where += " AND ステータス IN ('in_progress', 'pending', 'paused', 'done')";
+
   const [rows] = await db.query(
-    "SELECT タスクID, 会社名, トータルPC数, 生産数, 手動数, 自動数, ステータス, 予定開始時刻, 予定終了時刻, 終了見込日, 終了見込時刻 \
-     FROM 生産タスク \
-     WHERE ライン名=? AND ステータス IN ('in_progress', 'pending', 'paused', 'done') \
-     ORDER BY タスクID DESC LIMIT 1",
-    [req.params.line]
+    `SELECT タスクID, 会社名, トータルPC数, 生産数, 手動数, 自動数, ステータス, 予定開始時刻, 予定終了時刻, 終了見込日, 終了見込時刻 
+     FROM 生産タスク 
+     ${where} 
+     ORDER BY タスクID DESC LIMIT 1`,
+    params
   );
 
   if(!rows.length) return res.status(404).json({message:"no task"});
+
   const t = rows[0];
   const produced = t.生産数;
   const progressPct = Math.floor((produced / t.トータルPC数) * 100);
@@ -103,7 +117,7 @@ app.get("/staff/lines/:line/current", async (req,res) => {
 
 
   res.json({ 
-    lineName: req.params.line, 
+    lineName: line, 
     productName: t.会社名, 
     totalTarget: t.トータルPC数, produced, 
         progressPct, remaining, plannedFinishAt, expectedFinishAt, 
@@ -130,24 +144,36 @@ app.post("/staff/lines/:line/planned-finish", async (req,res) => {
 app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
   try {
     const delta = Number(req.body?.delta || 0);
+    const product = req.body?.product ? String(req.body.product) : null;
 
     await withTx(async (conn) => {
+      const params = [req.params.line];
+      let where = 'WHERE ライン名=? ';
+
+      if (product)
+      {
+        where += ' AND 会社名=?';
+        params.push(product);
+      }
+      where += " AND ステータス IN ('in_progress', 'pending', 'paused', 'done')";
+
       let [rows] = await conn.query(
-         `SELECT タスクID, トータルPC数, 生産数, 手動数, ステータス, 予定開始時刻, 予定終了時刻
-          FROM 生産タスク
-          WHERE ライン名=? AND ステータス IN ('in_progress','pending','paused','done')
-          ORDER BY タスクID DESC
-          LIMIT 1 FOR UPDATE`,
-        [req.params.line]
+        `SELECT タスクID, 会社名, トータルPC数, 生産数, 手動数, ステータス, 予定開始時刻, 予定終了時刻
+         FROM 生産タスク
+         ${where}
+         ORDER BY タスクID DESC
+         LIMIT 1 FOR UPDATE`,
+        params
       );
 
       if (!rows.length) {
+        const name = product || 'TV結'
         const [ins] = await conn.query(
           `INSERT INTO 生産タスク(管理者ID, ライン名, 会社名, ステータス, トータルPC数, 生産数, 手動数, 自動数)
-           VALUES (1, ?, 'TV結', 'in_progress', 1630, 0, 0, 0)`,
-          [req.params.line]
+           VALUES (1, ?, ?, 'in_progress', 1630, 0, 0, 0)`,
+          [req.params.line, name]
         );
-        rows = [{ タスクID: ins.insertId, トータルPC数: 1630, 生産数: 0, 手動数: 0, ステータス: 'in_progress' }];
+        rows = [{ タスクID: ins.insertId, 会社名: name, トータルPC数: 1630, 生産数: 0, 手動数: 0, ステータス: 'in_progress' }];
       }
 
       const t = rows[0];
@@ -158,6 +184,7 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
         err.payload = { message: 'paused' };
         throw err;
       }
+
       if (t.ステータス === 'done') {
         const err = new Error('finished');
         err.status = 409;
@@ -226,24 +253,38 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
       type === "finish" ? "終了時刻" : null;
     if (!col) return res.status(400).json({ message: "bad type" });
 
+    const product = req.body?.product ? String(req.body.product) : null;
+
     await withTx(async (conn) => 
     {
+      const params = [req.params.line];
+      let where = 'WHERE ライン名=? ';
+
+      if (product)
+      {
+        where += ' AND 会社名=?';
+        params.push(product);
+      }
+      where += " AND ステータス IN ('in_progress', 'pending', 'paused', 'done')";
+
       let [rows] = await conn.query(
-         `SELECT タスクID, トータルPC数, 生産数, ステータス
-          FROM 生産タスク
-          WHERE ライン名=? AND ステータス IN ('in_progress','pending', 'paused', 'done')
-          ORDER BY タスクID DESC
-          LIMIT 1 FOR UPDATE`,
-        [req.params.line]
+        `SELECT タスクID, トータルPC数, 生産数, ステータス
+         FROM 生産タスク
+         ${where}
+         ORDER BY タスクID DESC
+         LIMIT 1 FOR UPDATE`,
+        params
       );
 
-      if (!rows.length && type === "start") {
+      if (!rows.length && type === "start") 
+      {
+        const name = product || 'TV結';
         const [ins] = await conn.query(
           `INSERT INTO 生産タスク (ライン名, 会社名, ステータス, トータルPC数, 生産数, 手動数, 自動数)
-           VALUES (?, 'TV結', 'in_progress', 1630, 0, 0, 0)`,
-          [req.params.line]
+           VALUES (?, ?, 'in_progress', 1630, 0, 0, 0)`,
+          [req.params.line, name]
         );
-        rows = [{ タスクID: ins.insertId, トータルPC数: 1630, 生産数: 0, ステータス: "in_progress" }];
+        rows = [{ タスクID: ins.insertId, 会社名: name, トータルPC数: 1630, 生産数: 0, ステータス: "in_progress" }];
       }
 
       // if (!rows.length) {
@@ -298,24 +339,39 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
 
 
 app.get("/staff/lines/:line/counter-history", async (req, res, next) => {
+  const line = req.params.line;
+  const product = req.query.product ? String(req.query.product) : null;
   const limit = Number(req.query.limit || 100);
   const conn = await db.getConnection();
+
   try {
+    const params = [line];
+    let where = "WHERE t.ライン名=?";
+
+    if (product)
+    {
+      where += " AND t.会社名=?";
+      params.push(product);
+    }
+
+    params.push(limit);
+
     const [rows] = await conn.query(
       `SELECT
-        生産数,
-        DATE_FORMAT(通過時刻, '%H:%i') AS 通過時刻,
-        DATE_FORMAT(予定通過時刻, '%H:%i') AS 予定通過時刻,
-        残数,
-        DATE_FORMAT(開始時刻, '%H:%i') AS 開始時刻,
-        DATE_FORMAT(終了時刻, '%H:%i') AS 終了時刻,
-        DATE_FORMAT(中断時刻, '%H:%i') AS 中断時刻,
-        DATE_FORMAT(再開時刻, '%H:%i') AS 再開時刻
-      FROM カウント履歴
-      WHERE ライン名=?
-      ORDER BY COALESCE(通過時刻,開始時刻,終了時刻,中断時刻,再開時刻) DESC
+        h.生産数 AS 生産数,
+        DATE_FORMAT(h.通過時刻, '%H:%i') AS 通過時刻,
+        DATE_FORMAT(h.予定通過時刻, '%H:%i') AS 予定通過時刻,
+        h.残数 AS 残数,
+        DATE_FORMAT(h.開始時刻, '%H:%i') AS 開始時刻,
+        DATE_FORMAT(h.終了時刻, '%H:%i') AS 終了時刻,
+        DATE_FORMAT(h.中断時刻, '%H:%i') AS 中断時刻,
+        DATE_FORMAT(h.再開時刻, '%H:%i') AS 再開時刻
+      FROM カウント履歴 h
+      JOIN 生産タスク t ON h.タスクID = t.タスクID
+      ${where}
+      ORDER BY COALESCE(h.通過時刻, h.開始時刻, h.終了時刻, h.中断時刻, h.再開時刻) DESC
       LIMIT ?`,
-      [req.params.line, Number(req.query.limit || 100)]
+      params
     );
 
     res.json(rows);
