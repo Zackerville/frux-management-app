@@ -1,6 +1,7 @@
 import { useAuth } from '@/providers/AuthProvider'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+
 
 type Line = {
   id: string
@@ -12,19 +13,17 @@ type Line = {
   manualCount: number
   autoCount: number
 }
-
-const now = new Date()
-const addMin = (m: number) => new Date(now.getTime() + m * 60_000)
 const logo = require('../../assets/images/logo.png')
 
 const initLines: Line[] = [
-  { id: 'A', title: 'Aライン', product: '', plannedEnd: addMin(390), etaEnd: addMin(420), target: 1630, manualCount: 50, autoCount: 503 },
-  { id: 'B', title: 'Bライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'C', title: 'Cライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'D', title: 'Dライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'E', title: 'Eライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'F', title: 'Fライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'A', title: 'Aライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'B', title: 'Bライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'C', title: 'Cライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'D', title: 'Dライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'E', title: 'Eライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'F', title: 'Fライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
 ]
+
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -134,20 +133,18 @@ function Meter({ value, max }: { value: number; max: number }) {
   )
 }
 
-function LineCard({ line, onChange, onSave }: { line: Line; onChange: (next: Line) => void; onSave: (line: Line) => void }) {
-  const { id, title, product, plannedEnd, etaEnd, target, manualCount, autoCount } = line
+function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => void }) {
+  const { id, title,  plannedEnd, etaEnd, target, manualCount, autoCount } = line
   const set = (patch: Partial<Line>) => onChange({ ...line, ...patch })
   const total = manualCount + autoCount
-
-  return (
+    return (
     <View style={styles.card}>
       <View style={styles.cardBanner}>
   <Text style={styles.bannerPill}>{title}</Text>
 
-  {/* Ô input công ty */}
   <TextInput
   value={line.product || ""}
-  onChangeText={(txt) => set({ product: txt })}
+  editable={false}
   style={{
     width: 150,       
     marginLeft: 8,
@@ -169,12 +166,11 @@ function LineCard({ line, onChange, onSave }: { line: Line; onChange: (next: Lin
       <View style={styles.cols}>
         <View style={styles.col}>
           <Text style={styles.sectionTitle}>予定終了時刻</Text>
-          <DateFieldStack value={plannedEnd} onChange={(d) => set({ plannedEnd: d })} />
+          <DateFieldStack value={plannedEnd} onChange={() => {}} readOnly={true} />
           <Text style={[styles.sectionTitle, { marginTop: 18 }]}>生産指示数</Text>
           <TextInput
-            keyboardType="number-pad"
-            value={String(Number.isFinite(target) ? target : 0)}
-            onChangeText={(t) => set({ target: Number(t || 0) })}
+            value={String(target)}
+            editable={false}  // <-- chỉ đọc
             style={styles.inputGreen}
           />
           <Meter value={total} max={Math.max(1, target)} />
@@ -189,18 +185,16 @@ function LineCard({ line, onChange, onSave }: { line: Line; onChange: (next: Lin
             <View style={styles.countBox}>
               <Text style={styles.countHint}>トップカウント(手動)</Text>
               <TextInput
-                keyboardType="number-pad"
-                value={String(Number.isFinite(manualCount) ? manualCount : 0)}
-                onChangeText={(t) => set({ manualCount: Number(t || 0) })}
+                value={String(manualCount)}
+                editable={false}  // <-- chỉ đọc
                 style={[styles.inputGreen, styles.countInput]}
               />
             </View>
             <View style={styles.countBox}>
               <Text style={styles.countHint}>エンドカウント(自動)</Text>
               <TextInput
-                keyboardType="number-pad"
-                value={String(Number.isFinite(autoCount) ? autoCount : 0)}
-                onChangeText={(t) => set({ autoCount: Number(t || 0) })}
+                value={String(autoCount)}
+                editable={false}  // <-- chỉ đọc
                 style={[styles.inputGreen, styles.countInput]}
               />
             </View>
@@ -209,17 +203,6 @@ function LineCard({ line, onChange, onSave }: { line: Line; onChange: (next: Lin
         </View>
       </View>
 
-      <View style={styles.footerRow}>
-  <Text style={styles.smallMuted}>ライン {id}</Text>
-  <Text style={styles.smallMuted}>{total}/{target}</Text>
-
-  <Pressable
-    onPress={() => onSave(line)}
-    style={{ backgroundColor: '#147d37', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
-  >
-    <Text style={{ color: 'white', fontWeight: '700' }}>保存</Text>
-  </Pressable>
-</View>
 
     </View>
   )
@@ -228,32 +211,45 @@ function LineCard({ line, onChange, onSave }: { line: Line; onChange: (next: Lin
 export default function AdminDashboard() {
   const { logout } = useAuth()
   const [lines, setLines] = useState<Line[]>(initLines)
+
+  useEffect(() => {
+    const fetchAllLines = async () => {
+      try {
+        const res = await fetch("http://192.168.62.131:3000/api/lines");
+        const apiLines = await res.json();
+  
+        // Map API -> UI format
+        const mapped = initLines.map((ln) => {
+          const found = apiLines.find((x) => x.lineId === ln.id);
+  
+          if (!found) return ln;
+  
+          return {
+            ...ln,
+            product: found.product || "",
+            plannedEnd: found.plannedEnd ? new Date(found.plannedEnd) : new Date(),
+            etaEnd: found.etaEnd ? new Date(found.etaEnd) : new Date(),
+            target: found.total ?? 0,
+            manualCount: found.productionCount ?? 0,
+            autoCount: 0, // Nếu sau này backend trả thêm thì map vào
+          };
+        });
+  
+        setLines(mapped);
+      } catch (err) {
+        console.log("Fetch error:", err);
+      }
+    };
+  
+    fetchAllLines();
+  }, []);
+  
   const update = (i: number, next: Line) => {
     const copy = [...lines];
     copy[i] = next;
     setLines(copy);
   };  // <-- Đóng hàm update ở đây
   
-  const saveLine = async (line: Line) => {
-    try {
-      const res = await fetch("http://192.168.62.131:3000/api/saveLine", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lineName: line.title,
-          plannedEnd: line.plannedEnd,
-          target: line.target,
-          productionCount: line.manualCount + line.autoCount,
-        }),
-      });
-  
-      const json = await res.json();
-      alert(json.message); // Hiển thị "保存しました ✅" hoặc "保存失敗 ❌"
-    } catch (err) {
-      alert("保存失敗 ❌");
-      console.error(err);
-    }
-  };
   
   return (
     <View style={styles.screen}>
@@ -268,10 +264,9 @@ export default function AdminDashboard() {
       </View>
 
       <View style={styles.grid}>
-        {lines.map((ln, i) => (
-          <LineCard key={ln.id} line={ln} onChange={(n) => update(i, n)} onSave={saveLine} />
-
-        ))}
+      {lines.map((ln, i) => (
+  <LineCard key={ln.id} line={ln} onChange={(n) => update(i, n)} />
+))}
       </View>
     </View>
   )
