@@ -45,7 +45,7 @@ export default function AdminLogin() {
           return;
         }
     
-        // ✅ gọi đúng hàm signInAsAdmin và truyền adminId
+        // gọi đúng hàm signInAsAdmin và truyền adminId
         await signInAsAdmin(data.adminId);
     
       } catch (err) {

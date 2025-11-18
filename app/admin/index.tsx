@@ -1,7 +1,15 @@
-import { useAuth } from '@/providers/AuthProvider'
-import { useEffect, useMemo, useState } from 'react'
-import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useAuth } from '@/providers/AuthProvider';
+import { useEffect, useMemo, useState } from 'react';
+import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+const PC_IP = "192.168.62.133";
+
+const API_BASE = Platform.select({
+  web: "http://127.0.0.1:3000",     
+  ios: `http://${PC_IP}:3000`,       
+  android: `http://${PC_IP}:3000`,   
+  default: `http://${PC_IP}:3000`,
+});
 
 type Line = {
   id: string
@@ -215,7 +223,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchAllLines = async () => {
       try {
-        const res = await fetch("http://192.168.62.131:3000/api/lines");
+        const res = await fetch(`${API_BASE}/api/lines`);
         const apiLines = await res.json();
   
         // Map API -> UI format
