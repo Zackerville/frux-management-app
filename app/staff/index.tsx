@@ -21,10 +21,10 @@ type Section = { title: string; items: string[] }
 
 const sections: Section[] = [
   { title: "第1クール", items: ["TV結1", "TV結2"] },
-  { title: "第2クール", items: ["まつかわ1.3", "住主", "まつかわ3", "富士", "大和路"] },
+  { title: "第2クール", items: ["まつかわ1.3", "佳宝", "まつかわ3", "富士", "大和路"] },
   { title: "第3クール", items: ["ヤオコー管1", "ヤオコー管2"] },
   { title: "第4クール", items: ["ヤオコー管3", "ヤオコー彩春"] },
-  { title: "第5クール", items: ["ヤオコー管4", "自社春久山", "自社国産", "万代恵比寿1"] },
+  { title: "第5クール", items: ["ヤオコー管4", "自社香久山", "自社国産", "万代恵比寿1"] },
   { title: "第6クール", items: ["ヤオコー管5", "万代恵比寿2"] },
   { title: "第7クール", items: ["ヤオコー管6", "万代恵比寿3"] }
 ]
@@ -196,13 +196,25 @@ export default function StaffScreen() {
   }
 
 
-  useEffect(() => { if (!picked) return; loadCurrent().catch(console.error) }, [line, picked]);
-    const flash = (text: string) => {
-      setBannerMessage(text)
-      if (hideRef.current) clearTimeout(hideRef.current)
-      hideRef.current = setTimeout(() => setBannerMessage(""), 1000)
-    }
-    useEffect(() => () => { if(hideRef.current) clearTimeout(hideRef.current) }, [])
+  useEffect(() => { 
+    if (!picked) return; 
+    
+    const run = () => {
+      loadCurrent().catch(() => {});
+    };
+
+    run();
+
+    const timer = setInterval(run, 5000);
+    return () => clearInterval(timer);
+  }, [line, picked]);
+
+  const flash = (text: string) => {
+    setBannerMessage(text)
+    if (hideRef.current) clearTimeout(hideRef.current)
+    hideRef.current = setTimeout(() => setBannerMessage(""), 1000)
+  }
+  useEffect(() => () => { if(hideRef.current) clearTimeout(hideRef.current) }, [])
 
   const stamp = () => {
     const day = new Date()
