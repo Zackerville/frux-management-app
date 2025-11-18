@@ -1,6 +1,7 @@
 import { useAuth } from '@/providers/AuthProvider'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+
 
 type Line = {
   id: string
@@ -12,19 +13,17 @@ type Line = {
   manualCount: number
   autoCount: number
 }
-
-const now = new Date()
-const addMin = (m: number) => new Date(now.getTime() + m * 60_000)
 const logo = require('../../assets/images/logo.png')
 
 const initLines: Line[] = [
-  { id: 'A', title: 'Aライン', product: 'TV結', plannedEnd: addMin(390), etaEnd: addMin(420), target: 1630, manualCount: 50, autoCount: 503 },
-  { id: 'B', title: 'Bライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'C', title: 'Cライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'D', title: 'Dライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'E', title: 'Eライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'F', title: 'Fライン', plannedEnd: addMin(480), etaEnd: addMin(510), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'A', title: 'Aライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'B', title: 'Bライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'C', title: 'Cライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'D', title: 'Dライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'E', title: 'Eライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'F', title: 'Fライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
 ]
+
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -51,7 +50,7 @@ function GreenInputWeb(p: any) {
   )
 }
 
-function DateFieldStack({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
+function DateFieldStack({ value, onChange, readOnly = false }: { value: Date; onChange: (d: Date) => void; readOnly?: boolean }) {
   if (Platform.OS === 'web') {
     return (
       <View style={{ gap: 8 }}>
@@ -59,6 +58,7 @@ function DateFieldStack({ value, onChange }: { value: Date; onChange: (d: Date) 
           type="date"
           value={ymd(value)}
           onChange={(e: any) => {
+            if (readOnly) return
             const [Y, M, D] = e.target.value.split('-').map(Number)
             const n = new Date(value)
             n.setFullYear(Y)
@@ -66,17 +66,20 @@ function DateFieldStack({ value, onChange }: { value: Date; onChange: (d: Date) 
             n.setDate(D)
             onChange(n)
           }}
+          readOnly={readOnly}
         />
         <GreenInputWeb
           type="time"
           value={hm(value)}
           onChange={(e: any) => {
+            if (readOnly) return
             const [H, m] = e.target.value.split(':').map(Number)
             const n = new Date(value)
             n.setHours(H)
             n.setMinutes(m)
             onChange(n)
           }}
+          readOnly={readOnly}
         />
       </View>
     )
@@ -131,51 +134,67 @@ function Meter({ value, max }: { value: number; max: number }) {
 }
 
 function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => void }) {
-  const { id, title, product, plannedEnd, etaEnd, target, manualCount, autoCount } = line
+  const { id, title,  plannedEnd, etaEnd, target, manualCount, autoCount } = line
   const set = (patch: Partial<Line>) => onChange({ ...line, ...patch })
   const total = manualCount + autoCount
-
-  return (
+    return (
     <View style={styles.card}>
       <View style={styles.cardBanner}>
-        <Text style={styles.bannerPill}>{title}</Text>
-        {!!product && <Text style={styles.bannerPill}>{product}</Text>}
-      </View>
+  <Text style={styles.bannerPill}>{title}</Text>
+
+  <TextInput
+  value={line.product || ""}
+  editable={false}
+  style={{
+    width: 150,       
+    marginLeft: 8,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    height: 40,
+    fontWeight: '800',
+    textAlign: 'center',
+    color: '#000',
+    fontSize: 25
+  }}
+
+/>
+
+</View>
+
 
       <View style={styles.cols}>
         <View style={styles.col}>
           <Text style={styles.sectionTitle}>予定終了時刻</Text>
-          <DateFieldStack value={plannedEnd} onChange={(d) => set({ plannedEnd: d })} />
+          <DateFieldStack value={plannedEnd} onChange={() => {}} readOnly={true} />
           <Text style={[styles.sectionTitle, { marginTop: 18 }]}>生産指示数</Text>
           <TextInput
-            keyboardType="number-pad"
-            value={String(Number.isFinite(target) ? target : 0)}
-            onChangeText={(t) => set({ target: Number(t || 0) })}
+            value={String(target)}
+            editable={false}  // <-- chỉ đọc
             style={styles.inputGreen}
           />
           <Meter value={total} max={Math.max(1, target)} />
         </View>
 
         <View style={styles.col}>
-          <Text style={styles.sectionTitle}>終了見込時刻</Text>
-          <DateFieldStack value={etaEnd} onChange={(d) => set({ etaEnd: d })} />
+        <Text style={styles.sectionTitle}>終了見込時刻</Text>
+        <DateFieldStack value={etaEnd} onChange={(d) => set({ etaEnd: d })} readOnly={true} />
+
           <Text style={[styles.sectionTitle, { marginTop: 18 }]}>現在生産数</Text>
           <View style={styles.countRow}>
             <View style={styles.countBox}>
               <Text style={styles.countHint}>トップカウント(手動)</Text>
               <TextInput
-                keyboardType="number-pad"
-                value={String(Number.isFinite(manualCount) ? manualCount : 0)}
-                onChangeText={(t) => set({ manualCount: Number(t || 0) })}
+                value={String(manualCount)}
+                editable={false}  // <-- chỉ đọc
                 style={[styles.inputGreen, styles.countInput]}
               />
             </View>
             <View style={styles.countBox}>
               <Text style={styles.countHint}>エンドカウント(自動)</Text>
               <TextInput
-                keyboardType="number-pad"
-                value={String(Number.isFinite(autoCount) ? autoCount : 0)}
-                onChangeText={(t) => set({ autoCount: Number(t || 0) })}
+                value={String(autoCount)}
+                editable={false}  // <-- chỉ đọc
                 style={[styles.inputGreen, styles.countInput]}
               />
             </View>
@@ -184,10 +203,7 @@ function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => vo
         </View>
       </View>
 
-      <View style={styles.footerRow}>
-        <Text style={styles.smallMuted}>ライン {id}</Text>
-        <Text style={styles.smallMuted}>{total}/{target}</Text>
-      </View>
+
     </View>
   )
 }
@@ -195,12 +211,46 @@ function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => vo
 export default function AdminDashboard() {
   const { logout } = useAuth()
   const [lines, setLines] = useState<Line[]>(initLines)
-  const update = (i: number, next: Line) => {
-    const copy = [...lines]
-    copy[i] = next
-    setLines(copy)
-  }
 
+  useEffect(() => {
+    const fetchAllLines = async () => {
+      try {
+        const res = await fetch("http://192.168.62.131:3000/api/lines");
+        const apiLines = await res.json();
+  
+        // Map API -> UI format
+        const mapped = initLines.map((ln) => {
+          const found = apiLines.find((x) => x.lineId === ln.id);
+  
+          if (!found) return ln;
+  
+          return {
+            ...ln,
+            product: found.product || "",
+            plannedEnd: found.plannedEnd ? new Date(found.plannedEnd) : new Date(),
+            etaEnd: found.etaEnd ? new Date(found.etaEnd) : new Date(),
+            target: found.total ?? 0,
+            manualCount: found.productionCount ?? 0,
+            autoCount: 0, // Nếu sau này backend trả thêm thì map vào
+          };
+        });
+  
+        setLines(mapped);
+      } catch (err) {
+        console.log("Fetch error:", err);
+      }
+    };
+  
+    fetchAllLines();
+  }, []);
+  
+  const update = (i: number, next: Line) => {
+    const copy = [...lines];
+    copy[i] = next;
+    setLines(copy);
+  };  // <-- Đóng hàm update ở đây
+  
+  
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -214,9 +264,9 @@ export default function AdminDashboard() {
       </View>
 
       <View style={styles.grid}>
-        {lines.map((ln, i) => (
-          <LineCard key={ln.id} line={ln} onChange={(n) => update(i, n)} />
-        ))}
+      {lines.map((ln, i) => (
+  <LineCard key={ln.id} line={ln} onChange={(n) => update(i, n)} />
+))}
       </View>
     </View>
   )
