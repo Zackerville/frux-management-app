@@ -104,6 +104,7 @@ INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('ティ
 INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('ヒュウ', '情報システム', 'fruxholding');
 INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('tien', '情報システム', 'fruxholding');
 INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('tienminh', '情報システム', 'tienminh2004');
+INSERT INTO 管理者 (フルネーム, 部署, パスワード) VALUES ('huy', '情報システム', 'fruxholding');
 
 -- code from here from workbench
 USE FRUX;
@@ -190,7 +191,6 @@ SELECT * FROM 管理者;
 DELETE FROM 生産タスク WHERE タスクID = 2; 
 
 CREATE TABLE Aライン生産データ (
-
     商品コード INT PRIMARY KEY AUTO_INCREMENT COMMENT '商品コード',
     商品名 VARCHAR(100) NOT NULL COMMENT '商品名',
     ラインコード INT NOT NULL COMMENT 'ラインコード (例: 1 = Aライン)',
@@ -203,7 +203,7 @@ CREATE TABLE Aライン生産データ (
     生産性セットmin INT COMMENT '生産性セット（分）',
     開始時刻 DATETIME COMMENT '生産開始時刻',
     終了時刻 DATETIME COMMENT '生産終了時刻',
-    終了見込時刻 DATETIME COMMENT '終了見込時刻',--1
+    終了見込時刻 DATETIME COMMENT '終了見込時刻',
     生産時間_min単位 INT COMMENT '生産にかかった時間（分単位）',
     準備セット数min INT COMMENT '準備時間（分）',
     予定通過時刻 DATETIME COMMENT '予定通過時刻',
@@ -211,8 +211,8 @@ CREATE TABLE Aライン生産データ (
     
     生産開始日 DATE COMMENT '生産開始日',
     予定開始時刻 TIME COMMENT '予定開始時刻',
-    生産終了日 DATE COMMENT '生産終了日',--2
-    予定終了時刻 TIME COMMENT '予定終了時刻',--3
+    生産終了日 DATE COMMENT '生産終了日',
+    予定終了時刻 TIME COMMENT '予定終了時刻',
     
     打刻記録 DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '打刻記録',
     休憩min INT DEFAULT 0 COMMENT '休憩時間（分）',
@@ -554,3 +554,12 @@ CREATE TABLE Fライン生産データ (
 
     FOREIGN KEY (盛付ライン) REFERENCES 生産ライン(ライン名) ON DELETE CASCADE
 );
+
+SELECT * FROM 生産ライン;
+
+SELECT * FROM aライン生産データ;
+
+SELECT * FROM bライン生産データ;
+
+ALTER TABLE カウント履歴
+  DROP FOREIGN KEY fk_カウント履歴_生産タスク;
