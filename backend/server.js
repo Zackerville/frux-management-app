@@ -96,7 +96,6 @@ app.get('/api/lines', async (req, res) => {
             ORDER BY 商品コード DESC
             LIMIT 1;`);
         
-  
           if (rows.length === 0) 
           {
             results.push({
@@ -532,104 +531,7 @@ app.get("/staff/lines/:line/counter-history", async (req, res, next) => {
 
 
 // Implement the hours (予定通過時刻, 終了見込み時刻) calculate algorithm
-const BREAK_START = 12 * 3600;
-const BREAK_END = 13 * 3600;
 
-const timeStr2Sec = (t) => {
-  if (!t) return null;
-  const parts = String(t).split(':');
-  if (parts.length < 2) return null;
-  const h = Number(parts[0]);
-  const m = Number(parts[1]);
-  const s = Number((parts[2] || '0').split('.')[0] || '0');
-  if (Number.isNaN(h) || Number.isNaN(m) || Number.isNaN(s)) return null;
-  return h * 3600 + m * 60 + s;
-};
-
-const sec2timeStr = (sec) => {
-  let s = Math.round(sec);
-  const oneDay = 24 * 3600;
-  s = ((s % oneDay) + oneDay) % oneDay;
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const pad = (n) => n.toString().padStart(2, '0');
-  return pad(h) + ':' + pad(m);
-};
-
-const workTotalSec = (startSec, endSec) => {
-  const base = Math.max(endSec - startSec, 0);
-  const start = Math.max(startSec, BREAK_START);
-  const end = Math.min(endSec, BREAK_END);
-  const breakSec = Math.max(end - start, 0);
-  return Math.max(base - breakSec, 0);
-};
-
-const mapWorkToClock = (startSec, endSec, workSec) => {
-  const total = workTotalSec(startSec, endSec);
-  if (!total) return null;
-  const w = Math.max(0, Math.min(workSec, total));
-  const s = Math.max(startSec, BREAK_START);
-  const e = Math.min(endSec, BREAK_END);
-  const hasBreak = e > s;
-  if (!hasBreak) return sec2timeStr(startSec + w);
-  const preBreak = Math.max(0, Math.min(BREAK_START, endSec) - startSec);
-  if (w <= preBreak) return sec2timeStr(startSec + w);
-  return sec2timeStr(BREAK_END + (w - preBreak));
-};
-
-const computePlannedPassTime = (totalTarget, produced, startTime, endTime) => {
-  const startSec = timeStr2Sec(startTime);
-  const endSec = timeStr2Sec(endTime);
-  if (startSec == null || endSec == null || totalTarget <= 0) return null;
-  const total = workTotalSec(startSec, endSec);
-  if (!total) return null;
-  const p = Math.max(0, Math.min(totalTarget, produced));
-  const rate = totalTarget / total;
-  const workSec = p / rate;
-  return mapWorkToClock(startSec, endSec, workSec);
-};
-
-const computeElapsedWorkSec = (startSec, endSec, nowSec) => {
-  const b = Math.min(nowSec, endSec);
-  if (b <= startSec) return 0;
-  const base = b - startSec;
-  const s = Math.max(startSec, BREAK_START);
-  const e = Math.min(b, BREAK_END);
-  const breakSec = Math.max(e - s, 0);
-  const w = base - breakSec;
-  return w > 0 ? w : 0;
-};
-
-const addWorkingFromNow = (nowSec, workSec) => {
-  let sec = nowSec;
-  let rem = workSec;
-  if (rem <= 0) return sec;
-  if (sec < BREAK_START) {
-    const untilBreak = BREAK_START - sec;
-    if (rem <= untilBreak) return sec + rem;
-    rem -= untilBreak;
-    sec = BREAK_END;
-  } else if (sec < BREAK_END) {
-    sec = BREAK_END;
-  }
-  return sec + rem;
-};
-
-const computeExpectedFinishTime = (totalTarget, produced, startTime, endTime, now) => {
-  const startSec = timeStr2Sec(startTime);
-  const endSec = timeStr2Sec(endTime);
-  if (startSec == null || endSec == null || totalTarget <= 0) return null;
-  const p = Math.max(0, Math.min(totalTarget, produced));
-  const remaining = Math.max(totalTarget - p, 0);
-  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  if (remaining === 0) return sec2timeStr(nowSec);
-  const elapsed = computeElapsedWorkSec(startSec, endSec, nowSec);
-  if (!elapsed || !p) return sec2timeStr(endSec);
-  const rate = p / elapsed;
-  const workSec = remaining / rate;
-  const finishSec = addWorkingFromNow(nowSec, workSec);
-  return sec2timeStr(finishSec);
-};
 
 const PORT = Number(process.env.PORT || 3000);
 

@@ -561,5 +561,23 @@ SELECT * FROM aライン生産データ;
 
 SELECT * FROM bライン生産データ;
 
+SELECT * FROM Cライン生産データ;
+
+SELECT * FROM dライン生産データ;
+
+SELECT * FROM eライン生産データ;
+
+SELECT * FROM fライン生産データ;
+
 ALTER TABLE カウント履歴
   DROP FOREIGN KEY fk_カウント履歴_生産タスク;
+  
+ALTER TABLE Fライン生産データ
+    ADD COLUMN 自動数 INT DEFAULT 0 AFTER 生産数;
+    
+ALTER TABLE fライン生産データ
+	MODIFY COLUMN 生産終了日 DATE COMMENT '生産終了日'  AFTER 予定終了時刻;
+
+予定開始時刻 TIME COMMENT '予定開始時刻'
+予定終了時刻 TIME COMMENT '予定終了時刻'
+生産終了日 DATE COMMENT '生産終了日' 

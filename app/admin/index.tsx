@@ -15,8 +15,8 @@ type Line = {
   id: string
   title: string
   product?: string
-  plannedEnd: Date
-  etaEnd: Date
+  plannedEnd: Date | null
+  etaEnd: Date | null
   target: number
   manualCount: number
   autoCount: number
@@ -24,18 +24,34 @@ type Line = {
 const logo = require('../../assets/images/logo.png')
 
 const initLines: Line[] = [
-  { id: 'A', title: 'Aライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'B', title: 'Bライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'C', title: 'Cライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'D', title: 'Dライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'E', title: 'Eライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
-  { id: 'F', title: 'Fライン', product: '', plannedEnd: new Date(), etaEnd: new Date(), target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'A', title: 'Aライン', product: '', plannedEnd: null, etaEnd: null, target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'B', title: 'Bライン', product: '', plannedEnd: null, etaEnd: null, target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'C', title: 'Cライン', product: '', plannedEnd: null, etaEnd: null, target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'D', title: 'Dライン', product: '', plannedEnd: null, etaEnd: null, target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'E', title: 'Eライン', product: '', plannedEnd: null, etaEnd: null, target: 0, manualCount: 0, autoCount: 0 },
+  { id: 'F', title: 'Fライン', product: '', plannedEnd: null, etaEnd: null, target: 0, manualCount: 0, autoCount: 0 },
 ]
 
 
 const pad = (n: number) => String(n).padStart(2, '0')
-const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-const hm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`
+// const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+// const hm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`
+
+const ymd = (d?: Date | null) => {
+  if (!d) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const hm = (d?: Date | null) => {
+  if (!d) return ''
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
 
 function GreenInputWeb(p: any) {
   return (
@@ -58,14 +74,14 @@ function GreenInputWeb(p: any) {
   )
 }
 
-function DateFieldStack({ value, onChange, readOnly = false }: { value: Date; onChange: (d: Date) => void; readOnly?: boolean }) {
+function DateFieldStack({ value, onChange, readOnly = false }: { value: Date | null; onChange: (d: Date) => void; readOnly?: boolean }) {
   if (Platform.OS === 'web') {
     return (
       <View style={{ gap: 8 }}>
         <GreenInputWeb
-          type="date"
-          value={ymd(value)}
-          onChange={(e: any) => {
+          type = "date"
+          value = {value ? ymd(value) : ''}
+          onChange = {(e: any) => {
             if (readOnly) return
             const [Y, M, D] = e.target.value.split('-').map(Number)
             const n = new Date(value)
@@ -77,9 +93,9 @@ function DateFieldStack({ value, onChange, readOnly = false }: { value: Date; on
           readOnly={readOnly}
         />
         <GreenInputWeb
-          type="time"
-          value={hm(value)}
-          onChange={(e: any) => {
+          type = "time"
+          value = {value ? hm(value) : ''}
+          onChange = {(e: any) => {
             if (readOnly) return
             const [H, m] = e.target.value.split(':').map(Number)
             const n = new Date(value)
@@ -87,16 +103,16 @@ function DateFieldStack({ value, onChange, readOnly = false }: { value: Date; on
             n.setMinutes(m)
             onChange(n)
           }}
-          readOnly={readOnly}
+          readOnly = {readOnly}
         />
       </View>
     )
   }
   return (
-    <View style={{ gap: 8 }}>
+    <View style = {{ gap: 8 }}>
       <TextInput
-        value={ymd(value)}
-        onChangeText={(txt) => {
+        value = {value ? ymd(value) : ''}
+        onChangeText = {(txt) => {
           const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(txt)
           if (m) {
             const n = new Date(value)
@@ -235,8 +251,8 @@ export default function AdminDashboard() {
           return {
             ...ln,
             product: found.product || "",
-            plannedEnd: found.plannedEnd ? new Date(found.plannedEnd) : new Date(),
-            etaEnd: found.etaEnd ? new Date(found.etaEnd) : new Date(),
+            plannedEnd: found.plannedEnd ? new Date(found.plannedEnd) : null,
+            etaEnd: found.etaEnd ? new Date(found.etaEnd) : null,
             target: found.total ?? 0,
             manualCount: found.productionCount ?? 0,
             autoCount: 0, // Nếu sau này backend trả thêm thì map vào

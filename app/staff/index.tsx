@@ -21,12 +21,12 @@ type Section = { title: string; items: string[] }
 
 const sections: Section[] = [
   { title: "第1クール", items: ["TV結1", "TV結2"] },
-  { title: "第2クール", items: ["まつかわ1.3", "佳宝", "まつかわ3", "富士", "大和路"] },
-  { title: "第3クール", items: ["ヤオコー管1", "ヤオコー管2"] },
-  { title: "第4クール", items: ["ヤオコー管3", "ヤオコー彩春"] },
-  { title: "第5クール", items: ["ヤオコー管4", "自社香久山", "自社国産", "万代恵比寿1"] },
-  { title: "第6クール", items: ["ヤオコー管5", "万代恵比寿2"] },
-  { title: "第7クール", items: ["ヤオコー管6", "万代恵比寿3"] }
+  { title: "第2クール", items: ["まつおか1.3", "佳宝", "まつおか3", "富士", "大和路"] },
+  { title: "第3クール", items: ["ヤオコー誉1", "ヤオコー誉2"] },
+  { title: "第4クール", items: ["ヤオコー誉3", "ヤオコー彩春"] },
+  { title: "第5クール", items: ["ヤオコー誉4", "自社香久山", "自社国産", "万代恵比寿1"] },
+  { title: "第6クール", items: ["ヤオコー誉5", "万代恵比寿2"] },
+  { title: "第7クール", items: ["ヤオコー誉6", "万代恵比寿3"] }
 ]
 
 function InfoCard({ title, value, sub, tone }: { title: string; value: string; sub?: string; tone?: "green" }) {
