@@ -266,6 +266,8 @@ export default function AdminDashboard() {
     };
   
     fetchAllLines();
+    const timer = setInterval(fetchAllLines, 5000)
+    return () => clearInterval(timer)
   }, []);
   
   const update = (i: number, next: Line) => {

@@ -157,13 +157,51 @@ app.get('/api/lines', async (req, res) => {
           // 🔹 Chuẩn hoá 終了見込時刻 (datetime)
           // -----------------------------------
           let etaStr = null;
-          if (row.rawEtaEnd) 
+          if (row.rawEtaEnd && endDateStr && timeStr) 
           {
-            if (typeof row.rawEtaEnd === "string") 
+            let etaDate = null;
+            if (row.rawEtaEnd instanceof Date) 
             {
-              etaStr = row.rawEtaEnd; // ex: '2025-11-13 17:45:00'
+              etaDate = row.rawEtaEnd;
             } 
-            else if (row.rawEtaEnd instanceof Date) 
+            else if (typeof row.rawEtaEnd === "string") 
+            {
+              const s = row.rawEtaEnd.replace(" ", "T");
+              const d0 = new Date(s);
+              if (!isNaN(d0.getTime())) {
+                etaDate = d0;
+              }
+            }
+            if (etaDate) 
+            {
+              const parts = timeStr.split(":");
+              const ph = parseInt(parts[0] || "0", 10);
+              const pm = parseInt(parts[1] || "0", 10);
+              const ps = parseInt(parts[2] || "0", 10);
+              const dailyPlan = new Date(
+                etaDate.getFullYear(),
+                etaDate.getMonth(),
+                etaDate.getDate(),
+                ph,
+                pm,
+                ps || 0,
+                0
+              );
+              const delayMs = etaDate.getTime() - dailyPlan.getTime();
+              const shippingPlan = new Date(`${endDateStr}T${timeStr}`);
+              const etaFinal = new Date(shippingPlan.getTime() + delayMs);
+              const y = etaFinal.getFullYear();
+              const m = String(etaFinal.getMonth() + 1).padStart(2, "0");
+              const d = String(etaFinal.getDate()).padStart(2, "0");
+              const h = String(etaFinal.getHours()).padStart(2, "0");
+              const mi = String(etaFinal.getMinutes()).padStart(2, "0");
+              const s2 = String(etaFinal.getSeconds()).padStart(2, "0");
+              etaStr = `${y}-${m}-${d}T${h}:${mi}:${s2}`;
+            }
+          }
+          if (!etaStr && row.rawEtaEnd) 
+          {
+            if (row.rawEtaEnd instanceof Date) 
             {
               const y = row.rawEtaEnd.getFullYear();
               const m = String(row.rawEtaEnd.getMonth() + 1).padStart(2, "0");
@@ -172,8 +210,14 @@ app.get('/api/lines', async (req, res) => {
               const mi = String(row.rawEtaEnd.getMinutes()).padStart(2, "0");
               const s = String(row.rawEtaEnd.getSeconds()).padStart(2, "0");
               etaStr = `${y}-${m}-${d}T${h}:${mi}:${s}`;
+            } 
+            else if (typeof row.rawEtaEnd === "string") 
+            {
+              const s = row.rawEtaEnd.replace(" ", "T");
+              etaStr = s;
             }
           }
+
     
           results.push({
           lineId: ln.id,
@@ -237,25 +281,12 @@ app.get("/staff/lines/:line/current", async (req, res) => {
   const totalTarget = t.合計数 || 0;
   const produced = t.生産数 || 0;
   const remaining = typeof t.残数 === "number" ? t.残数 : Math.max(totalTarget - produced, 0);
-  const progressPct = totalTarget > 0 ? Math.floor((produced / totalTarget) * 100) : 0;
+  const progressPct = typeof t.生産進捗率 === 'number' ? t.生産進捗率 :totalTarget > 0 ? Math.floor((produced / totalTarget) * 100) : 0;
 
-  const plannedStartTime = t.予定開始時刻 || null;
-  const plannedEndTime = t.予定終了時刻 || null;
-
-  const plannedPassTime = computePlannedPassTime(
-    totalTarget,
-    produced,
-    plannedStartTime,
-    plannedEndTime
-  );
-
-  const expectedFinishTime = computeExpectedFinishTime(
-    totalTarget,
-    produced,
-    plannedStartTime,
-    plannedEndTime,
-    new Date()
-  );
+  const plannedStartTime = formatTimeField(t.予定開始時刻);
+  const plannedEndTime = formatTimeField(t.予定終了時刻);
+  const plannedPassTime = formatTimeField(t.予定通過時刻);
+  const expectedFinishTime = formatTimeField(t.終了見込時刻)
 
   let status = "in_progress";
   if (t.更新回避) status = "paused";
@@ -306,10 +337,21 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
 
     const line = req.params.line;
     const table = getLineTable(line);
+    let historyPayload = null;
 
     await withTx(async (conn) => {
       const [rows] = await conn.query(
-        `SELECT 商品コード, 商品名, 合計数, 生産数, 更新回避, 予定開始時刻, 予定終了時刻, 終了時刻
+        `SELECT
+           商品コード,
+           商品名,
+           合計数,
+           生産数,
+           更新回避,
+           予定開始時刻,
+           予定終了時刻,
+           開始時刻,
+           終了時刻,
+           休憩min
          FROM ${table}
          WHERE 商品名 = ?
          ORDER BY 商品コード DESC
@@ -323,11 +365,10 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
 
       const t = rows[0];
 
-      if (t.終了時刻)
-      {
-        const err = new Error('finished');
+      if (t.終了時刻) {
+        const err = new Error("finished");
         err.status = 409;
-        err.payload = {message : 'finished'};
+        err.payload = { message: "finished" };
         throw err;
       }
 
@@ -352,31 +393,75 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
       const remaining = Math.max(total - np, 0);
       const eventType = delta >= 0 ? "manual_inc" : "manual_dec";
 
-      const plannedPassTime = computePlannedPassTime(
-        total,
-        np,
-        t.予定開始時刻,
-        t.予定終了時刻
-      );
+      const calc = computeProductionTimes({
+        plannedStart: t.予定開始時刻,
+        plannedEnd: t.予定終了時刻,
+        actualStart: t.開始時刻 || t.予定開始時刻,
+        totalCount: total,
+        producedCount: np,
+        breakMinutes: t.休憩min || 0,
+        now: new Date()
+      });
 
       await conn.query(
         `UPDATE ${table}
-           SET 生産数 = ?, カウント数 = カウント数 + ?, 打刻記録 = NOW()
+           SET 生産数 = ?,
+               生産時間_min単位 = ?,
+               生産性セットmin = ?,
+               準備セット数min = ?,
+               予定通過時刻 = ?,
+               終了見込時刻 = ?,
+               カウント数 = カウント数 + ?,
+               打刻記録 = NOW()
          WHERE 商品コード = ?`,
-        [np, delta, t.商品コード]
+        [
+          np,
+          calc.netPlannedMinutes,
+          calc.minutesPerSetPlan,
+          calc.minutesPerTenSetsPlan,
+          calc.plannedPassAt,
+          calc.expectedFinishAt,
+          delta,
+          t.商品コード
+        ]
       );
 
-      await conn.query(
-        `INSERT INTO カウント履歴
-           (タスクID, ライン名, 通過時刻, 予定通過時刻, 生産数, 残数, イベント種別, 差分)
-         VALUES (?, ?, NOW(), ?, ?, ?, ?, ?)`,
-        [t.商品コード, line, plannedPassTime, np, remaining, eventType, delta]
-      );
+      historyPayload = {
+        taskId: t.商品コード,
+        line,
+        plannedPassAt: calc.plannedPassAt,
+        produced: np,
+        remaining,
+        eventType,
+        delta
+      };
     });
+
+    if (historyPayload) {
+      try {
+        await db.query(
+          `INSERT INTO カウント履歴
+             (タスクID, ライン名, 通過時刻, 予定通過時刻, 生産数, 残数, イベント種別, 差分)
+           VALUES (?, ?, NOW(), ?, ?, ?, ?, ?)`,
+          [
+            historyPayload.taskId,
+            historyPayload.line,
+            historyPayload.plannedPassAt,
+            historyPayload.produced,
+            historyPayload.remaining,
+            historyPayload.eventType,
+            historyPayload.delta
+          ]
+        );
+      } catch (err) {
+        console.error("Insert カウント履歴 failed:", err);
+      }
+    }
 
     res.json({ ok: true, now: new Date().toISOString() });
   } catch (e) {
     if (e.status) return res.status(e.status).json(e.payload);
+    console.error(e);
     next(e);
   }
 });
@@ -531,6 +616,149 @@ app.get("/staff/lines/:line/counter-history", async (req, res, next) => {
 
 
 // Implement the hours (予定通過時刻, 終了見込み時刻) calculate algorithm
+function toDateTime(value, baseDate) 
+{
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "string") 
+  {
+    const v = value.trim();
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(v)) 
+    {
+      const base = baseDate ? new Date(baseDate) : new Date();
+      const result = new Date(base);
+      const parts = v.split(":");
+      const h = parseInt(parts[0], 10) || 0;
+      const m = parseInt(parts[1], 10) || 0;
+      const s = parts[2] ? parseInt(parts[2], 10) || 0 : 0;
+      result.setHours(h, m, s, 0);
+      if (baseDate && result < base) {
+        result.setDate(result.getDate() + 1);
+      }
+      return result;
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(v)) 
+    {
+      const norm = v.replace(" ", "T");
+      const d = new Date(norm);
+      if (!isNaN(d.getTime())) return d;
+    }
+    const d2 = new Date(v);
+    if (!isNaN(d2.getTime())) return d2;
+  }
+  return null;
+}
+
+
+function diffMinutes(start, end) {
+  return (end.getTime() - start.getTime()) / 60000;
+}
+
+function workingMinutesBetween(startInput, endInput, extraBreakMinutes) {
+  const start = toDateTime(startInput);
+  const end = toDateTime(endInput, start);
+  if (!start || !end || end <= start) return 0;
+  const total = diffMinutes(start, end);
+  const extra = extraBreakMinutes ? Number(extraBreakMinutes) : 0;
+  const net = total - extra;
+  return net > 0 ? net : 0;
+}
+
+
+
+function addMinutes(dateInput, minutes) 
+{
+  const date = toDateTime(dateInput);
+  if (!date) return null;
+  const d = new Date(date);
+  const m = Number(minutes || 0);
+  d.setTime(d.getTime() + m * 60000);
+  return d;
+}
+
+
+
+function addWorkingMinutesSkippingLunch(startInput, minutesInput) {
+  return addMinutes(startInput, minutesInput);
+}
+
+
+function computeProductionTimes(params) {
+  const start = toDateTime(params.plannedStart);
+  const end = toDateTime(params.plannedEnd, start);
+  const totalCount = Number(params.totalCount || 0);
+  const producedRaw = Number(params.producedCount || 0);
+  const breakMinutes = Number(params.breakMinutes || 0);
+  const extraBreakMinutes = Number(params.extraBreakMinutes || 0);
+  const now = params.now ? toDateTime(params.now, start) : new Date();
+
+  const producedCount = producedRaw < 0 ? 0 : producedRaw;
+  const breakTotal = breakMinutes + extraBreakMinutes;
+
+  let netPlannedMinutes = 0;
+  if (start && end && end > start) {
+    netPlannedMinutes = workingMinutesBetween(start, end, breakTotal);
+  }
+
+  let minutesPerSetPlan = null;
+  let minutesPerTenSetsPlan = null;
+  if (netPlannedMinutes > 0 && totalCount > 0) {
+    const setsPerMinute = totalCount / netPlannedMinutes;
+    minutesPerSetPlan = setsPerMinute;
+    minutesPerTenSetsPlan = setsPerMinute > 0 ? 10 / setsPerMinute : null;
+  }
+
+
+  let plannedPassAt = null;
+  if (start && netPlannedMinutes > 0 && totalCount > 0) {
+    if (producedCount <= 0) {
+      plannedPassAt = start;
+    } else {
+      let ratio = producedCount / totalCount;
+      if (ratio > 1) ratio = 1;
+      const targetMinutes = netPlannedMinutes * ratio;
+      plannedPassAt = addMinutes(start, targetMinutes);
+    }
+  }
+
+
+  let expectedFinishAt = null;
+  if (end && plannedPassAt && producedCount > 0) {
+    const delayMs = now.getTime() - plannedPassAt.getTime();
+    expectedFinishAt = new Date(end.getTime() + delayMs);
+  } else if (end) {
+    expectedFinishAt = end;
+  }
+
+  return {
+    plannedPassAt,
+    expectedFinishAt,
+    netPlannedMinutes: Math.round(netPlannedMinutes),
+    minutesPerSetPlan: minutesPerSetPlan != null ? Math.round(minutesPerSetPlan) : null,
+    minutesPerTenSetsPlan: minutesPerTenSetsPlan != null ? Math.round(minutesPerTenSetsPlan) : null,
+    minutesPerSetActual: null
+  };
+}
+
+
+function formatTimeField(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const v = value.trim();
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(v)) return v;
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(11, 19);
+    if (/^\d{4}-\d{2}-\d{2} /.test(v)) return v.slice(11, 19);
+    return v;
+  }
+  if (value instanceof Date) {
+    const h = String(value.getHours()).padStart(2, "0");
+    const m = String(value.getMinutes()).padStart(2, "0");
+    const s = String(value.getSeconds()).padStart(2, "0");
+    return `${h}:${m}:${s}`;
+  }
+  const s = String(value);
+  return s.length >= 5 ? s.slice(0, 5) : s;
+}
 
 
 const PORT = Number(process.env.PORT || 3000);
