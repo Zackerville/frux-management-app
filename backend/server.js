@@ -437,7 +437,8 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
       };
     });
 
-    if (historyPayload) {
+    if (historyPayload) 
+    {
       try {
         await db.query(
           `INSERT INTO カウント履歴
@@ -459,7 +460,9 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
     }
 
     res.json({ ok: true, now: new Date().toISOString() });
-  } catch (e) {
+  } 
+  catch (e) 
+  {
     if (e.status) return res.status(e.status).json(e.payload);
     console.error(e);
     next(e);
@@ -477,9 +480,8 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
       type === "resume" ? "再開時刻" :
       type === "finish" ? "終了時刻" : null;
 
-    if (!col) {
+    if (!col) 
       return res.status(400).json({ message: "bad type" });
-    }
 
     const line = req.params.line;
     const product = req.body?.product ? String(req.body.product) : null;
@@ -502,14 +504,13 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
         [product]
       );
 
-      if (!rows.length) {
-        return;
-      }
+      if (!rows.length) return;
 
       hasRow = true;
       const t = rows[0];
 
-      if (type === "start") {
+      if (type === "start") 
+      {
         await conn.query(
           `UPDATE ${table}
              SET 生産数 = 0,
@@ -522,7 +523,9 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
            WHERE 商品コード = ?`,
           [t.商品コード]
         );
-      } else if (type === "pause") {
+      } 
+      else if (type === "pause") 
+      {
         await conn.query(
           `UPDATE ${table}
              SET 更新回避 = TRUE,
@@ -530,7 +533,9 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
            WHERE 商品コード = ?`,
           [t.商品コード]
         );
-      } else if (type === "resume") {
+      } 
+      else if (type === "resume") 
+      {
         await conn.query(
           `UPDATE ${table}
              SET 更新回避 = FALSE,
@@ -538,7 +543,9 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
            WHERE 商品コード = ?`,
           [t.商品コード]
         );
-      } else if (type === "finish") {
+      } 
+      else if (type === "finish") 
+      {
         await conn.query(
           `UPDATE ${table}
              SET 終了時刻 = NOW()
@@ -570,7 +577,8 @@ app.get("/staff/lines/:line/counter-history", async (req, res, next) => {
   const limit = Number(req.query.limit || 100);
   const conn = await db.getConnection();
 
-  try {
+  try 
+  {
     const table = getLineTable(line);
     const params = [line];
     let where = "WHERE h.ライン名 = ?";
@@ -607,9 +615,11 @@ app.get("/staff/lines/:line/counter-history", async (req, res, next) => {
     );
 
     res.json(rows);
-  } catch (e) {
+  } 
+  catch (e) {
     next(e);
-  } finally {
+  } 
+  finally {
     conn.release();
   }
 });
@@ -677,11 +687,9 @@ function addMinutes(dateInput, minutes)
 }
 
 
-
-function addWorkingMinutesSkippingLunch(startInput, minutesInput) {
-  return addMinutes(startInput, minutesInput);
-}
-
+// function addWorkingMinutesSkippingLunch(startInput, minutesInput) {
+//   return addMinutes(startInput, minutesInput);
+// }
 
 function computeProductionTimes(params) {
   const start = toDateTime(params.plannedStart);
