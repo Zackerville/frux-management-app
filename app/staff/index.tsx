@@ -6,10 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 const logo = require("../../assets/images/logo.png")
 
-const PC_IP = "192.168.62.133";
+const PC_IP = "192.168.62.152";
 
 const API_BASE = Platform.select({
-  web: "http://127.0.0.1:3000",     
+  web: `http://127.0.0.1:3000`,     
   ios: `http://${PC_IP}:3000`,       
   android: `http://${PC_IP}:3000`,   
   default: `http://${PC_IP}:3000`,
@@ -99,6 +99,7 @@ export default function StaffScreen() {
                                            produced: number; 
                                            remaining: number; 
                                            progressPct: number;
+                                           autoCount: number;
                                            productName?: string | null;
                                            plannedStartTime?: string | null;
                                            plannedEndTime?: string | null;
@@ -359,7 +360,7 @@ export default function StaffScreen() {
                 <View style={styles.detailCard} >
                   <DetailRow label="終了見込時刻" value={fmtTime(current?.expectedFinishTime) ?? '-'} labelStyle={{color: "#eb053eff" }} valueStyle={{color: "#eb053eff"}}/>
                   <DetailRow label="生産進捗率" value={hasTask ? fmtPercentage(progress) : NO_DATA} labelStyle={{color: "#eb053eff" }} valueStyle={{color: "#eb053eff"}}/>
-                  <DetailRow label="自動カウンター" value="10 セット" />
+                  <DetailRow label="自動カウンター" value={hasTask? fmtNum(current?.autoCount ?? 0) : NO_DATA} />
                   <DetailRow label="生産進捗数" value={hasTask ? fmtNum(done) : NO_DATA} /> 
                   <DetailRow label="残数" value={hasTask ? fmtNum(remaining) : NO_DATA} />
                 </View>

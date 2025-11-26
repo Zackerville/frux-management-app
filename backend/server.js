@@ -9,9 +9,9 @@ app.use(express.json());
 
 // Kết nối DB
 const db = await mysql.createPool({
-  host: '127.0.0.1',
-  user: 'root',
-  password: 'fruxholding',
+  host: '34.97.183.142',
+  user: 'FruxAdmin',
+  password: 'Fruxadmin#2025',
   database: 'FRUX'
 });
 
@@ -91,7 +91,8 @@ app.get('/api/lines', async (req, res) => {
             予定終了時刻 AS rawPlannedTime,
             終了見込時刻 AS rawEtaEnd,
             合計数 AS total,
-            生産数 AS productionCount
+            生産数 AS productionCount,
+            自動数 AS autoCount
             FROM ${ln.table}
             ORDER BY 商品コード DESC
             LIMIT 1;`);
@@ -104,7 +105,8 @@ app.get('/api/lines', async (req, res) => {
               plannedEnd: null,
               etaEnd: null,
               total: 0,
-              productionCount: 0
+              productionCount: 0,
+              autoCount: 0
             });
             continue;
           }
@@ -225,7 +227,8 @@ app.get('/api/lines', async (req, res) => {
           plannedEnd: plannedEndISO,   // ex: "2025-11-13T17:30:00"
           etaEnd: etaStr,              // ex: "2025-11-13T17:45:00"
           total: row.total ?? 0,
-          productionCount: row.productionCount ?? 0
+          productionCount: row.productionCount ?? 0,
+          autoCount: row.autoCount ?? 0,
           });
         }
     
@@ -264,7 +267,7 @@ app.get("/staff/lines/:line/current", async (req, res) => {
 
   const [rows] = await db.query(
     `SELECT
-       商品コード, 商品名, 合計数, 生産数, 残数, 生産進捗率, 予定開始時刻, 予定終了時刻, 予定通過時刻, 終了見込時刻, 更新回避, 終了時刻
+       商品コード, 商品名, 合計数, 生産数, 残数, 生産進捗率, 予定開始時刻, 予定終了時刻, 予定通過時刻, 終了見込時刻, 更新回避, 終了時刻, 自動数
      FROM ${table}
      WHERE 商品名 = ?
      ORDER BY 商品コード DESC
@@ -282,6 +285,7 @@ app.get("/staff/lines/:line/current", async (req, res) => {
   const produced = t.生産数 || 0;
   const remaining = typeof t.残数 === "number" ? t.残数 : Math.max(totalTarget - produced, 0);
   const progressPct = typeof t.生産進捗率 === 'number' ? t.生産進捗率 :totalTarget > 0 ? Math.floor((produced / totalTarget) * 100) : 0;
+  const autoCount = t.自動数 || 0;
 
   const plannedStartTime = formatTimeField(t.予定開始時刻);
   const plannedEndTime = formatTimeField(t.予定終了時刻);
@@ -298,6 +302,7 @@ app.get("/staff/lines/:line/current", async (req, res) => {
     productName: t.商品名,
     totalTarget,
     produced,
+    autoCount,
     remaining,
     progressPct,
     plannedStartTime,
@@ -330,6 +335,7 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
   try {
     const delta = Number(req.body?.delta || 0);
     const product = req.body?.product ? String(req.body.product) : null;
+    const now = new Date();
 
     if (!delta || !product) {
       return res.json({ ok: true });
@@ -412,7 +418,7 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
                予定通過時刻 = ?,
                終了見込時刻 = ?,
                カウント数 = カウント数 + ?,
-               打刻記録 = NOW()
+               打刻記録 = ?
          WHERE 商品コード = ?`,
         [
           np,
@@ -422,6 +428,7 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
           calc.plannedPassAt,
           calc.expectedFinishAt,
           delta,
+          now,
           t.商品コード
         ]
       );
@@ -433,7 +440,8 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
         produced: np,
         remaining,
         eventType,
-        delta
+        delta,
+        timestamp: now,
       };
     });
 
@@ -443,10 +451,11 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
         await db.query(
           `INSERT INTO カウント履歴
              (タスクID, ライン名, 通過時刻, 予定通過時刻, 生産数, 残数, イベント種別, 差分)
-           VALUES (?, ?, NOW(), ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             historyPayload.taskId,
             historyPayload.line,
+            historyPayload.timestamp,
             historyPayload.plannedPassAt,
             historyPayload.produced,
             historyPayload.remaining,
@@ -474,6 +483,7 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
 app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
   try {
     const type = req.params.type;
+    const now = new Date();
     const col =
       type === "start" ? "開始時刻" :
       type === "pause" ? "中断時刻" :
@@ -516,12 +526,12 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
              SET 生産数 = 0,
                  カウント数 = 0,
                  更新回避 = FALSE,
-                 開始時刻 = NOW(),
+                 開始時刻 = ?,
                  中断時刻 = NULL,
                  再開時刻 = NULL,
                  終了時刻 = NULL
            WHERE 商品コード = ?`,
-          [t.商品コード]
+          [now, t.商品コード]
         );
       } 
       else if (type === "pause") 
@@ -529,9 +539,9 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
         await conn.query(
           `UPDATE ${table}
              SET 更新回避 = TRUE,
-                 中断時刻 = NOW()
+                 中断時刻 = ?
            WHERE 商品コード = ?`,
-          [t.商品コード]
+          [now, t.商品コード]
         );
       } 
       else if (type === "resume") 
@@ -539,18 +549,18 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
         await conn.query(
           `UPDATE ${table}
              SET 更新回避 = FALSE,
-                 再開時刻 = NOW()
+                 再開時刻 = ?
            WHERE 商品コード = ?`,
-          [t.商品コード]
+          [now, t.商品コード]
         );
       } 
       else if (type === "finish") 
       {
         await conn.query(
           `UPDATE ${table}
-             SET 終了時刻 = NOW()
+             SET 終了時刻 = ?
            WHERE 商品コード = ?`,
-          [t.商品コード]
+          [now, t.商品コード]
         );
       }
 
@@ -559,8 +569,8 @@ app.post("/staff/lines/:line/actions/:type", async (req, res, next) => {
       await conn.query(
         `INSERT INTO カウント履歴
            (タスクID, ライン名, ${col}, 生産数, 残数, イベント種別)
-         VALUES (?, ?, NOW(), ?, GREATEST(? - ?, 0), ?)`,
-        [t.商品コード, line, producedForHistory, t.合計数 || 0, producedForHistory, type]
+         VALUES (?, ?, ?, ?, GREATEST(? - ?, 0), ?)`,
+        [t.商品コード, line, now,  producedForHistory, t.合計数 || 0, producedForHistory, type]
       );
     });
 
@@ -621,6 +631,38 @@ app.get("/staff/lines/:line/counter-history", async (req, res, next) => {
   } 
   finally {
     conn.release();
+  }
+});
+
+app.post('/auto_count', async (req, res) => {
+  try {
+    const { line, delta } = req.body;
+    if (!line || !delta) return res.status(400).json({message: 'Invalid payload'});
+
+    let table;
+    if (line === 'A') table = 'Aライン生産データ';
+    else if (line === 'B') table = 'Bライン生産データ';
+    else if (line === 'C') table = 'Cライン生産データ';
+    else if (line === 'D') table = 'Dライン生産データ';
+    else if (line === 'E') table = 'Eライン生産データ';
+    else if (line === 'F') table = 'Fライン生産データ';
+    else return res.status(400).json({message: 'unknow line'});
+
+    const [result] = await db.query(
+      `UPDATE ${table}
+      SET 自動数 = 自動数 + ?
+      WHERE 開始時刻 IS NOT NULL AND 終了時刻 IS NULL
+      ORDER BY 商品コード DESC
+      LIMIT 1`,
+      [delta]
+    );
+
+    return res.json({ok: true, affectedRows: result.affectedRows});
+  } 
+  catch (err)
+  {
+    console.error(err);
+    return res.status(500).json({message: 'server error'});
   }
 });
 

@@ -185,8 +185,6 @@ function LineCard({ line, onChange }: { line: Line; onChange: (next: Line) => vo
 />
 
 </View>
-
-
       <View style={styles.cols}>
         <View style={styles.col}>
           <Text style={styles.sectionTitle}>予定終了時刻</Text>
@@ -255,7 +253,7 @@ export default function AdminDashboard() {
             etaEnd: found.etaEnd ? new Date(found.etaEnd) : null,
             target: found.total ?? 0,
             manualCount: found.productionCount ?? 0,
-            autoCount: 0, // Nếu sau này backend trả thêm thì map vào
+            autoCount: found.autoCount ?? 0,
           };
         });
   

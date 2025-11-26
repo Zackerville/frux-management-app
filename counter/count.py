@@ -1,228 +1,292 @@
-# -*- coding: utf-8 -*-
-
+import os
 import yaml
 import numpy as np
 import cv2
 from datetime import datetime
 import threading
 import time
+import queue
+import mysql.connector
 
-VIDEO_SOURCE_1 = 1
-VIDEO_SOURCE_2 = 2 
-VIDEO_SOURCE_3 = 3 
-VIDEO_SOURCE_4 = 4 
-VIDEO_SOURCE_5 = 5
-VIDEO_SOURCE_6 = 6
+BACKEND_URL = 'https://127.0.0.1:3000/auto_count'
 
-path = "../output/"
+MYSQL_CONFIG = {
+    'host': '34.97.183.142',
+    'port': 3306,
+    'user': 'FruxAdmin',
+    'password': 'Fruxadmin#2025',
+    'database': 'FRUX',
+}
 
-fn_yaml = r"/datasets/area.yml" 
+VIDEO_SOURCES = {
+    0: "Camera 1 (ID 0)",
+    1: "Camera 2 (ID 1)",
+    2: "Camera 3 (ID 2)",
+    3: "Camera 4 (ID 3)",
+    4: "Camera 5 (ID 4)",
+    5: "Camera 6 (ID 5)",
+}
+
+CAMERA_TABLE_MAP = {
+    "Camera 1 (ID 0)": "Aライン生産データ",
+    "Camera 2 (ID 1)": "Bライン生産データ",
+    "Camera 3 (ID 2)": "Cライン生産データ",
+    "Camera 4 (ID 3)": "Dライン生産データ",
+    "Camera 5 (ID 4)": "Eライン生産データ",
+    "Camera 6 (ID 5)": "Fライン生産データ",
+}
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+fn_yaml = os.path.join("data.yaml")
+
 config = {'save_video': False,
           'text_overlay': True,
           'object_overlay': True,
           'object_id_overlay': False,
           'object_detection': True,
           'min_area_motion_contour': 60,
-          'park_sec_to_wait': 0.001,
+          'park_sec_to_wait': 0.1,
           'start_frame': 0}
 
-data_lock = threading.Lock() 
+stop_event = threading.Event()
+
+frame_queue = queue.Queue(maxsize=40) 
+DISPLAY_WINDOW_SIZE = (480,360)
+
+def log_count_to_mysql(camera_name, total_count, ppm, timestamp):
+    """
+    Save total_count in 自動数.
+    """
+    table_name = CAMERA_TABLE_MAP.get(camera_name)
+    
+    if not table_name:
+        print(f"[MySQL Log] ERROR: Camera name '{camera_name}' not found in CAMERA_TABLE_MAP.")
+        return
+
+    try:
+        conn = mysql.connector.connect(**MYSQL_CONFIG) 
+        cursor = conn.cursor()
+
+        cursor.execute(f"""
+                       SELECT 商品コード
+                       FROM {table_name}
+                       WHERE 開始時刻 IS NOT NULL AND 終了時刻 IS NULL
+                       ORDER BY 商品コード DESC
+                       LIMIT 1
+                       """)
+        row = cursor.fetchone()
+        
+        if not row:
+            print(f'No active task in {table_name}')
+            return
+        
+        task_id = row[0]
+        cursor.execute(f"""
+                       UPDATE {table_name}
+                       SET 自動数 = %s WHERE 商品コード = %s
+                       """, (total_count, task_id))
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+             print(f"[MySQL Log] WARNING: No rows updated in {table_name}. Task ID not found.")
+        else:
+             print(f"[MySQL Log] Updated {table_name}. Set 自動数 = {total_count} successfully.")
+
+    except mysql.connector.Error as err:
+        print(f"[MySQL Error] Failed to update data in {table_name}: {err}")
+    except Exception as e:
+        print(f"[General Error] Log function error: {e}")
+    finally:
+        if 'cursor' in locals() and cursor:
+            cursor.close()
+        if 'conn' in locals() and conn.is_connected():
+            conn.close()
 
 def load_yaml_data(fn_yaml):
-    """Tải và xử lý dữ liệu vùng đếm từ file YAML."""
+    """Loading data of file YAML."""
     try:
         with open(fn_yaml, 'r') as stream:
             object_area_data = yaml.safe_load(stream)
             if not object_area_data:
-                print(f"Warnning: File YAML '{fn_yaml}' rỗng hoặc không có dữ liệu vùng đếm.")
+                print(f"Warning: File YAML '{fn_yaml}' Empty or Not found data of countting area.")
                 return [], []
     except FileNotFoundError:
-        print(f"Lỗi: Không tìm thấy file YAML tại đường dẫn: {fn_yaml}")
+        print(f"Error: Not Found file YAML: {fn_yaml}")
         return [], []
     except Exception as e:
-        print(f"Error : file YAML: {e}")
+        print(f"Error reading YAML file: {e}")
         return [], []
         
     object_bounding_rects = []
     
     for park in object_area_data:
-        points = np.array(park['points'])
+        points = np.array(park['points'], dtype=np.int32)
         rect = cv2.boundingRect(points)
         object_bounding_rects.append(rect)
             
-    print(f"Số lượng vùng ROI được tải: {len(object_area_data)}")
+    print(f"ROI area: {len(object_area_data)}")
     return object_area_data, object_bounding_rects
 
 object_area_data, object_bounding_rects = load_yaml_data(fn_yaml)
 
-def camera_processing_thread(camera_id, camera_name, object_area_data, object_bounding_rects):
-    """
-    Hàm xử lý video độc lập cho từng camera.
-    Tất cả các biến đếm và thời gian đều là CỤC BỘ.
-    """
-    
-    cap = cv2.VideoCapture(camera_id)
-    if not cap.isOpened():
-        print(f"Can't Open Camera {camera_id} ({camera_name}). Đã bỏ qua luồng này.")
-        return
+class CameraWorker(threading.Thread):
+    def __init__(self, camera_id, camera_name, object_area_data, object_bounding_rects, stop_event, frame_queue):
+        super().__init__()
+        self.camera_id = camera_id
+        self.camera_name = camera_name
+        self.object_area_data = object_area_data
+        self.object_bounding_rects = object_bounding_rects
+        self.stop_event = stop_event
+        self.frame_queue = frame_queue
+        
+    def run(self):
+        cap = cv2.VideoCapture(self.camera_id)
+        if not cap.isOpened():
+            print(f"Can't Open Camera {self.camera_id} ({self.camera_name}). Passed this thread.")
+            return
 
-    start_time_cam = datetime.now()
-    last_time_cam = datetime.now()
-    
-    ct_cam = 0.0
-    ppm_cam = 0.0
-    total_output_cam = 0 
-    fastest_cam = 0.0
-    ppm_average_cam = 0.0
-    qty_cam = 0
-    rec_qty_cam = 1 
+        print(f"Camera Opening {self.camera_name} (ID: {self.camera_id})")
+        
+        start_time_cam = datetime.now()
+        last_time_cam = datetime.now()
+        ct_cam = 0.0
+        ppm_cam = 0.0
+        total_output_cam = 0 
+        fastest_cam = 0.0
+        ppm_average_cam = 0.0
 
-    object_status = [False] * len(object_area_data)
-    object_buffer = [None] * len(object_area_data)
+        object_status = [False] * len(self.object_area_data)
+        object_buffer = [None] * len(self.object_area_data)
 
-    print (f"Camera Openning {camera_name} (ID: {camera_id})")
-    
-    while(cap.isOpened()): 
-        try:
-            video_cur_pos = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0 
-            ret, frame = cap.read() 
-            
-            if ret == False:
-                time.sleep(0.1) 
-                continue 
+        while cap.isOpened() and not self.stop_event.is_set(): 
+            try:
+                ret, frame = cap.read() 
+                
+                if ret is False or frame is None:
+                    time.sleep(0.1)
+                    if cap.get(cv2.CAP_PROP_FRAME_COUNT) > 0 and cap.get(cv2.CAP_PROP_POS_FRAMES) >= cap.get(cv2.CAP_PROP_FRAME_COUNT):
+                        break 
+                    continue
 
-            frame_blur = cv2.GaussianBlur(frame.copy(), (5,5), 3)
-            frame_gray = cv2.cvtColor(frame_blur, cv2.COLOR_BGR2GRAY)
-            frame_out = frame.copy()
+                video_cur_pos = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0 
+                frame_out = frame.copy()
+                
+                frame_blur = cv2.GaussianBlur(frame.copy(), (5,5), 3)
+                frame_gray = cv2.cvtColor(frame_blur, cv2.COLOR_BGR2GRAY)
 
-            if config['object_detection']: 
-                for ind, park in enumerate(object_area_data):
-                    rect = object_bounding_rects[ind]
-                    roi_gray = frame_gray[rect[1]:(rect[1]+rect[3]), rect[0]:(rect[0]+rect[2])] 
-                    status = np.std(roi_gray) < 20 and np.mean(roi_gray) > 56
+                if config['object_detection']: 
+                    for ind, park in enumerate(self.object_area_data):
+                        rect = self.object_bounding_rects[ind]
+                        roi_gray = frame_gray[rect[1]:(rect[1]+rect[3]), rect[0]:(rect[0]+rect[2])] 
+                        
+                        if roi_gray.size > 0:
+                            status = np.std(roi_gray) < 20 and np.mean(roi_gray) > 56
+                        else:
+                            status = object_status[ind]
 
-                    if status != object_status[ind] and object_buffer[ind] == None: 
-                        object_buffer[ind] = video_cur_pos
-
-                    elif status != object_status[ind] and object_buffer[ind] != None:
-                        if video_cur_pos - object_buffer[ind] > config['park_sec_to_wait']:
-                            if status==False:
-                                # ===============================================================
-                                qty_cam += 1
-                                total_output_cam += 1
-                                
-                                current_time = datetime.now()
-                                diff = current_time - last_time_cam 
-                                ct_cam = diff.total_seconds()
-                                
-                                if ct_cam > 0:
-                                    ppm_cam = round(60 / ct_cam, 2)
-                                else:
-                                    ppm_cam = 0.0
+                        if status != object_status[ind]:
+                            if object_buffer[ind] is None: 
+                                object_buffer[ind] = video_cur_pos
+                            elif video_cur_pos - object_buffer[ind] > config['park_sec_to_wait']:
+                                if status == False:
+                                    total_output_cam += 1
                                     
-                                last_time_cam = current_time
+                                    current_time = datetime.now()
+                                    diff = current_time - last_time_cam 
+                                    ct_cam = diff.total_seconds()
+                                    ppm_cam = round(60 / ct_cam, 2) if ct_cam > 0 else 0.0
+                                    last_time_cam = current_time
 
-                                diff_total = current_time - start_time_cam
-                                minutes = diff_total.total_seconds() / 60
-                                
-                                if minutes > 0:
-                                    ppm_average_cam = round(total_output_cam / minutes, 2)
-                                else:
-                                    ppm_average_cam = 0.0
+                                    diff_total = current_time - start_time_cam
+                                    minutes = diff_total.total_seconds() / 60
+                                    ppm_average_cam = round(total_output_cam / minutes, 2) if minutes > 0 else 0.0
 
-                                data = (camera_name, current_time.strftime('%Y%m%d %H%M%S.%f'), total_output_cam, minutes, ppm_average_cam, ct_cam, ppm_cam)
-
-                                with data_lock:
                                     if (ppm_cam > fastest_cam):
                                         fastest_cam = ppm_cam
-                                        
-                                    if (qty_cam > rec_qty_cam):
-                                        qty_cam = 0
 
-                                # ===============================================================
-                            
-                            object_status[ind] = status
+                                    print(f"[{self.camera_name}] Count* {total_output_cam}, PPM: {ppm_cam:.2f}, Avg PPM: {ppm_average_cam:.2f}")
+                                    log_count_to_mysql(self.camera_name, total_output_cam, ppm_cam, current_time)
+
+                                object_status[ind] = status
+                                object_buffer[ind] = None 
+                        elif status == object_status[ind] and object_buffer[ind] is not None:
                             object_buffer[ind] = None 
-                    
-                    elif status == object_status[ind] and object_buffer[ind]!=None:
-                        object_buffer[ind] = None 
 
-            if config['object_overlay']: 
-                for ind, park in enumerate(object_area_data):
-                    points = np.array(park['points'])
+                if config['object_overlay']: 
+                    for ind, park in enumerate(self.object_area_data):
+                        points = np.array(park['points'], dtype=np.int32)
+                        
+                        color = (0,255,0) if object_status[ind] else (0,0,255)
+                        
+                        cv2.drawContours(frame_out, [points], contourIdx=-1,color=color, thickness=2, lineType=cv2.LINE_8) 
 
-                    color = (0,255,0) if object_status[ind] else (0,0,255)
-                    
-                    cv2.drawContours(frame_out, [points], contourIdx=-1,color=color, thickness=2, lineType=cv2.LINE_8) 
+                        if config['object_id_overlay']:
+                            moments = cv2.moments(points)
+                            if moments['m00'] != 0:
+                                centroid = (int(moments['m10']/moments['m00']), int(moments['m01']/moments['m00']))
+                                cv2.putText(frame_out, str(park['id']), centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,0,0), 1, cv2.LINE_AA)
 
-                    if config['object_id_overlay']:
-                        moments = cv2.moments(points)    
-                        if moments['m00'] != 0:
-                            centroid = (int(moments['m10'] / moments['m00'])-3, int(moments['m01']/moments['m00'])+3)
-                            cv2.putText(frame_out, str(park['id']), centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,0,0), 1, cv2.LINE_AA)
-
-            if config['text_overlay']:
-                display_total_output = total_output_cam
-                display_ppm = ppm_cam
-                display_fastest = fastest_cam
-                display_ppm_average = ppm_average_cam
+                if config['text_overlay']:
+                    cv2.rectangle(frame_out, (1, 5), (350, 90),(0,255,0), 2)
+                    cv2.putText(frame_out, f"CAMERA: {self.camera_name} (ID: {self.camera_id})", (5,20), cv2.FONT_HERSHEY_SIMPLEX ,0.5, (255,0,0), 2, cv2.LINE_AA)
+                    cv2.putText(frame_out, f"Total Counting = {total_output_cam}, Speed (PPM) = {ppm_cam:.2f}", (5,40), cv2.FONT_HERSHEY_SIMPLEX ,0.5, (0,0,255), 2, cv2.LINE_AA)
+                    cv2.putText(frame_out, f"Fastest PPM: {fastest_cam:.2f}, Average: {ppm_average_cam:.2f}", (5,60), cv2.FONT_HERSHEY_SIMPLEX ,0.5, (255,255,0), 1, cv2.LINE_AA)
+                    cv2.putText(frame_out, f"Last CT (s): {ct_cam:.2f}", (5,80), cv2.FONT_HERSHEY_SIMPLEX ,0.5, (255,255,0), 1, cv2.LINE_AA)
                 
-                cv2.rectangle(frame_out, (1, 5), (350, 90),(0,255,0), 2)
-                cv2.putText(frame_out, f"CAMERA: {camera_name} (ID: {camera_id})", (5,20), cv2.FONT_HERSHEY_SIMPLEX ,0.5, (255,0,0), 2, cv2.LINE_AA)
-                str_on_frame = "Total Counting = %d, Speed (PPM) = %.2f" % (display_total_output, display_ppm)
-                cv2.putText(frame_out, str_on_frame, (5,40), cv2.FONT_HERSHEY_SIMPLEX ,0.5, (0,0,255), 2, cv2.LINE_AA)
-                str_on_frame = "Fastest PPM: %.2f, Average: %.2f" % (display_fastest, display_ppm_average)
-                cv2.putText(frame_out, str_on_frame, (5,60), cv2.FONT_HERSHEY_SIMPLEX ,0.5, (255,255,0), 1, cv2.LINE_AA)
-                str_on_frame = "Last CT (s): %.2f" % ct_cam
-                cv2.putText(frame_out, str_on_frame, (5,80), cv2.FONT_HERSHEY_SIMPLEX ,0.5, (255,255,0), 1, cv2.LINE_AA)
+                try:
+                    self.frame_queue.put((self.camera_name, frame_out), timeout=0.01)
+                except queue.Full:
+                    pass
 
-
-            imS = cv2.resize(frame_out, (480,360))
-            cv2.imshow(f'Output Counting - {camera_name}', imS)
-            cv2.waitKey(1)
+            except Exception as e:
+                print(f"Camera Error {self.camera_name}: {e}")
+                break
             
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            print(f"Camera Error {camera_name}: {e}")
-            break
+            time.sleep(0.001)
 
-    cap.release()
-    print(f"Camera {camera_name} Stopped. Final Count: {total_output_cam}")
+        cap.release()
+        print(f"Camera {self.camera_name} Stopped. Final Count: {total_output_cam}")
 
 if __name__ == '__main__':
 
-    thread_cam1 = threading.Thread(target=camera_processing_thread, args=(VIDEO_SOURCE_1, "Camera 1", object_area_data, object_bounding_rects))
-    thread_cam2 = threading.Thread(target=camera_processing_thread, args=(VIDEO_SOURCE_2, "Camera 2", object_area_data, object_bounding_rects))
-    thread_cam3 = threading.Thread(target=camera_processing_thread, args=(VIDEO_SOURCE_3, "Camera 3", object_area_data, object_bounding_rects))
-    thread_cam4 = threading.Thread(target=camera_processing_thread, args=(VIDEO_SOURCE_4, "Camera 4", object_area_data, object_bounding_rects))
-    thread_cam5 = threading.Thread(target=camera_processing_thread, args=(VIDEO_SOURCE_5, "Camera 5", object_area_data, object_bounding_rects))
-    thread_cam6 = threading.Thread(target=camera_processing_thread, args=(VIDEO_SOURCE_6, "Camera 6", object_area_data, object_bounding_rects))
+    if not object_area_data:
+        print("Not found data of ROI, System can't be start. Log Out.")
+        exit()
+        
+    threads = []
 
-    thread_cam1.start()
-    thread_cam2.start()
-    thread_cam3.start()
-    thread_cam4.start()
-    thread_cam5.start()
-    thread_cam6.start()
+    for camera_id, camera_name in VIDEO_SOURCES.items():
+        t = CameraWorker(camera_id, camera_name, object_area_data, object_bounding_rects, stop_event, frame_queue)
+        threads.append(t)
+        t.start()
 
+    print("Camera Systems Start. Press 'q' or ESC to exit.")
+    
     try:
-        while True:
+        while not stop_event.is_set():
+            try:
+                camera_name, frame_out = frame_queue.get(timeout=0.001) 
+                
+                imS = cv2.resize(frame_out, (480, 360))
+                cv2.imshow(f'Output Counting - {camera_name}', imS)
+                
+            except queue.Empty:
+                pass
+            
             k = cv2.waitKey(1)
-            if k == ord('q'):
-                break
-            time.sleep(0.1) 
+            if k == ord('q') or k == 27:
+                stop_event.set()
+
     except KeyboardInterrupt:
-        pass
+        stop_event.set()
+    except Exception as e:
+        print(f"Main Loop Error: {e}")
+        stop_event.set()
 
     print("Shutting Down Camera...")
 
-    thread_cam1.join(timeout=2)
-    thread_cam2.join(timeout=2)
-    thread_cam3.join(timeout=2)
-    thread_cam4.join(timeout=2)
-    thread_cam5.join(timeout=2)
-    thread_cam6.join(timeout=2)
+    for t in threads:
+        t.join(timeout=5)
 
     cv2.destroyAllWindows()
     print("Shutdown Systems.")
