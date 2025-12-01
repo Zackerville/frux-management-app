@@ -2,7 +2,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-const PC_IP = "192.168.62.133";
+const PC_IP = "192.168.60.220";
 
 const API_BASE = Platform.select({
   web: "http://127.0.0.1:3000",     

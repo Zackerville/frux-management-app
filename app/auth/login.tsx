@@ -33,7 +33,6 @@ export default function Login() {
         </View>
 
         <View style={styles.centerCol}>
-          <Text style={styles.lineTitle}>Aライン</Text>
           <Pressable onPress={startStaff} style={[styles.primaryBtn, styles.wideBtn]}>
             <Text style={styles.primaryTxt}>スタート</Text>
           </Pressable>

@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 const logo = require("../../assets/images/logo.png")
 
-const PC_IP = "192.168.62.152";
+const PC_IP = "192.168.60.220";
 
 const API_BASE = Platform.select({
   web: `http://127.0.0.1:3000`,     
@@ -19,15 +19,15 @@ const LINES = ['Aライン', 'Bライン', 'Cライン', 'Dライン', 'Eライ�
 
 type Section = { title: string; items: string[] }
 
-const sections: Section[] = [
-  { title: "第1クール", items: ["TV結1", "TV結2"] },
-  { title: "第2クール", items: ["まつおか1.3", "佳宝", "まつおか3", "富士", "大和路"] },
-  { title: "第3クール", items: ["ヤオコー誉1", "ヤオコー誉2"] },
-  { title: "第4クール", items: ["ヤオコー誉3", "ヤオコー彩春"] },
-  { title: "第5クール", items: ["ヤオコー誉4", "自社香久山", "自社国産", "万代恵比寿1"] },
-  { title: "第6クール", items: ["ヤオコー誉5", "万代恵比寿2"] },
-  { title: "第7クール", items: ["ヤオコー誉6", "万代恵比寿3"] }
-]
+// const sections: Section[] = [
+//   { title: "第1クール", items: ["TV結1", "TV結2"] },
+//   { title: "第2クール", items: ["まつおか1.3", "佳宝", "まつおか3", "富士", "大和路"] },
+//   { title: "第3クール", items: ["ヤオコー誉1", "ヤオコー誉2"] },
+//   { title: "第4クール", items: ["ヤオコー誉3", "ヤオコー彩春"] },
+//   { title: "第5クール", items: ["ヤオコー誉4", "自社香久山", "自社国産", "万代恵比寿1"] },
+//   { title: "第6クール", items: ["ヤオコー誉5", "万代恵比寿2"] },
+//   { title: "第7クール", items: ["ヤオコー誉6", "万代恵比寿3"] }
+// ]
 
 function InfoCard({ title, value, sub, tone }: { title: string; value: string; sub?: string; tone?: "green" }) {
   const toneStyle = useMemo(() => {
@@ -61,10 +61,10 @@ function ActionButton({ label, color, onPress, disabled }: { label: string; colo
   );
 }
 
-function ActionLine({ label, color, onPress, ts, note }: {label: string; color: 'green'; onPress: () => void, ts?: string, note?: string}) {
+function ActionLine({ label, color, onPress, ts, note, disabled }: {label: string; color: 'green'; onPress: () => void, ts?: string, note?: string, disabled?: boolean}) {
   return (
     <View style={styles.actionLine}>
-      <ActionButton label={label} color='green' onPress={onPress} />
+      <ActionButton label={label} color='green' onPress={onPress} disabled={disabled} />
       <View style={styles.timeBox}>
         <Text style={styles.timeText}>{ts ?? "-"}</Text>
         {!!note && <Text style={styles.noteText}>{note}</Text>}
@@ -82,6 +82,7 @@ export default function StaffScreen() {
     finish?: string;
   };
 
+  const [sections, setSections] = useState<Section[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [picked, setPicked] = useState<string | null>(null)
   const [now, setNow] = useState<string>("")
@@ -108,7 +109,39 @@ export default function StaffScreen() {
                                            status?: string; }|null>(null);
 
   const canPrep = !paused && (current?.remaining ?? 0) > 0;
+  const isDone = current?.status === 'done'
   const [line, setLine] = useState<string>('Aライン');
+
+  useEffect(() => {
+    const fetchSections = async () => {
+      try 
+      {
+        const r = await fetch(`${API_BASE}/staff/lines/${encodeURIComponent(line)}/products`);
+        if (!r.ok) throw new Error(await r.text());
+        const data = (await r.json()) as Section[];
+        setSections(data);
+
+        setPicked(prev => {
+          if (!prev) return null;
+          return data.some(sec => sec.items.includes(prev)) ? prev : null;
+        });
+      }
+      catch (err)
+      {
+        console.error(err);
+        setSections([]);
+        setPicked(null);
+      }
+    };
+
+    fetchSections();
+
+    const timer = setInterval(fetchSections, 3000);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+
+  }, [line]);
 
   const key = picked ? `${line}__${picked}` : '';
   const actionTime: ActionTime = key && actionTimes[key] ? actionTimes[key] : {};
@@ -206,7 +239,7 @@ export default function StaffScreen() {
 
     run();
 
-    const timer = setInterval(run, 5000);
+    const timer = setInterval(run, 3000);
     return () => clearInterval(timer);
   }, [line, picked]);
 
@@ -368,8 +401,8 @@ export default function StaffScreen() {
 
               <View style={styles.actionsCol}>
                 <ActionLine label="生産 開始"  color="green" ts={actionTime.start}  onPress={async () => { mark('start')(); const r = await action('start'); if (!r?.noop) { setPaused(false); setFinishNote(undefined); setDone(0); await loadCurrent().catch(() => {}); } }} />
-                <ActionLine label="生産 中断"  color="green" ts={actionTime.pause}  onPress={async () => { mark('pause')(); const r = await action('pause'); if(r?.ok) { setPaused(true); await loadCurrent().catch(() => {}); } }} />
-                <ActionLine label="生産 再開"  color="green" ts={actionTime.resume} onPress={async () => { mark('resume')(); const r = await action('resume'); if(r?.ok) { setPaused(false); await loadCurrent().catch(() => {}); } }} />
+                <ActionLine label="生産 中断"  color="green" ts={actionTime.pause} disabled={isDone} onPress={async () => { mark('pause')(); const r = await action('pause'); if(r?.ok) { setPaused(true); await loadCurrent().catch(() => {}); } }} />
+                <ActionLine label="生産 再開"  color="green" ts={actionTime.resume} disabled={isDone} onPress={async () => { mark('resume')(); const r = await action('resume'); if(r?.ok) { setPaused(false); await loadCurrent().catch(() => {}); } }} />
                 <ActionLine label="生産 終了"  color="green" ts={actionTime.finish} note={finishNote} onPress={async () => { mark('finish')(); await action('finish'); setFinishNote('生産終了しました！'); setTimeout(() => setFinishNote(undefined), 3000); await loadCurrent().catch(() => {}); }} />
                 <ActionLine label="カウンター履歴" color="green" onPress={() => router.push({pathname: '/staff/explore', params: {line, product: picked || ''} })} />
               </View>

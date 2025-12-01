@@ -2,7 +2,7 @@ import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 
-const PC_IP = "192.168.62.133";
+const PC_IP = "192.168.60.220";
 
 const API_BASE = Platform.select({
   web: "http://127.0.0.1:3000",     
