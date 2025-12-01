@@ -380,7 +380,9 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
            合計数,
            生産数,
            更新回避,
+           生産開始日,
            予定開始時刻,
+           生産終了日,
            予定終了時刻,
            開始時刻,
            終了時刻,
@@ -397,6 +399,9 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
       }
 
       const t = rows[0];
+
+      const plannedStart = buildDateTime(t.生産開始日, t.予定開始時刻);
+      const plannedEnd = buildDateTime(t.生産終了日, t.予定終了時刻);
 
       if (t.終了時刻) {
         const err = new Error("finished");
@@ -427,9 +432,8 @@ app.post("/staff/lines/:line/counters/manual", async (req, res, next) => {
       const eventType = delta >= 0 ? "manual_inc" : "manual_dec";
 
       const calc = computeProductionTimes({
-        plannedStart: t.予定開始時刻,
-        plannedEnd: t.予定終了時刻,
-        actualStart: t.開始時刻 || t.予定開始時刻,
+        plannedStart,
+        plannedEnd,
         totalCount: total,
         producedCount: np,
         breakMinutes: t.休憩min || 0,
@@ -730,11 +734,14 @@ function toDateTime(value, baseDate)
 }
 
 
-function diffMinutes(start, end) {
+function diffMinutes(start, end) 
+{
+
   return (end.getTime() - start.getTime()) / 60000;
 }
 
-function workingMinutesBetween(startInput, endInput, extraBreakMinutes) {
+function workingMinutesBetween(startInput, endInput, extraBreakMinutes) 
+{
   const start = toDateTime(startInput);
   const end = toDateTime(endInput, start);
   if (!start || !end || end <= start) return 0;
@@ -760,6 +767,19 @@ function addMinutes(dateInput, minutes)
 // function addWorkingMinutesSkippingLunch(startInput, minutesInput) {
 //   return addMinutes(startInput, minutesInput);
 // }
+
+function buildDateTime(dateValue, timeValue) {
+  const d = toDateTime(dateValue);
+  if (!d && !timeValue) return null;
+  if (!d) return toDateTime(timeValue);
+  const base = new Date(d);
+  const t = toDateTime(timeValue, base);
+  if (t instanceof Date) {
+    base.setHours(t.getHours(), t.getMinutes(), t.getSeconds(), 0);
+  }
+  return base;
+}
+
 
 function computeProductionTimes(params) {
   const start = toDateTime(params.plannedStart);
